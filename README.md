@@ -59,7 +59,7 @@ Requirements
 Supported Path "Templates"
 ==========================
 ```
-1. /{z}/{x}/y.png (OSM-like; default)
+1. /{z}/{x}/{y}.png (OSM-like; default)
 2. /{z}/filename_{z}_{x}_{y}.png
 3. /{z}/filename_{x}_{x}_{z}.png
 ```

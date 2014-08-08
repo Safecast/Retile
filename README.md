@@ -17,7 +17,7 @@ Tell me about it.
 
 ##Are there any examples of this in use?
 
-Yes.  http://safecast.org/tilemap uses Retile on the webserver to "crush" the Safecast interpolation overlay tiles, as well as create zoom levels 0 - 12.  It is otherwise prohibitive to run to a new interpolation for every zoom level, so Retile not only saves a great deal of computational time but also removes pngcrush from the workflow.
+Yes.  http://safecast.org/tilemap uses Retile on the webserver to "crush" the Safecast interpolation overlay tiles, as well as create zoom levels 0 - 12.  It is otherwise prohibitive to run a new interpolation for every zoom level, so Retile not only saves a great deal of computational time but also removes pngcrush from the workflow.
 
 ##Is it fast?
 

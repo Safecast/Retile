@@ -47,6 +47,14 @@ Currently, it can rewrite tiles from standard URL templates in three formats and
 
 If you want JPEG support, find a way to bring some variant of libjpeg in, sniff the magic bytes, pass the format through and submit a pull request.  Frankly, I found aggressively optimized PNG always outperformed JPEG, but note I am not using satellite or aerial imagery.
 
+##What kind of resampling does it do?
+
+By default when built for OS X, it uses Lanczos 3x3 with filtering to control ringing and overshoot / undershoot artifacts.  The core Lanczos resampling is provided by vImage in the Accelerate framework.
+
+If the Accelerate framework is not available, it falls back upon a modified average algorithm.  The modification being that it will not average pixels whose alpha channel is 0, as this indicates NODATA.
+
+In both cases, the processing is specific to GIS rasters.
+
 Requirements
 ============
 
@@ -63,6 +71,8 @@ Supported Path "Templates"
 2. /{z}/filename_{z}_{x}_{y}.png
 3. /{z}/filename_{x}_{y}_{z}.png
 ```
+
+It is recommended that OSM paths be used for performance, as placing hundreds of thousands of files in the same directory is often problematic.
 
 Usage Example
 =============
@@ -83,6 +93,26 @@ Retile /tiles/3 /tiles
 Retile /tiles/2 /tiles
 Retile /tiles/1 /tiles
 ```
+
+Deployment Note
+===============
+After building Retile, you'll get a "Retile" executable and a libpng15.framework in the same directory.  Which is great, except Xcode is hardcoded to depend on frameworks being in ../Frameworks/.  So you have to fix this.
+
+```
+/Retile
+/libpng15.framework
+```
+
+Move these files each to their own subdirectory as such:
+
+```
+/app/Retile
+/Frameworks/libpng15.framework
+```
+
+It doesn't matter what you name "app".
+
+My assumption as to the why of it is that deploying frameworks as part of the build is not expected for anything but a Cocoa ".app" bundle.  If there's a way to fix this with some build setting, I don't know what it is.
 
 About/Licensing
 ===============

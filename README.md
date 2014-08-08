@@ -5,25 +5,47 @@ Reprocess raster map tiles.
 
 Primarily, Retile works to create downsampled zoom levels for web map tiles.  Sort of like gdal2tiles, only it takes a directory of PNG files as an input, not a huge monolithic raster.
 
-```
-       z=1
-+-------+-------+
-|       |       |                     z=0
-| (0,0) | (1,0) |                  +-------+
-|       |       |                  |       |
-+-------+-------+   -> Retile ->   | (0,0) |
-|       |       |                  |       |
-| (0,1) | (1,1) |                  +-------+
-|       |       |
-+-------+-------+
-
-    /1/0/0.png                     /0/0/0.png
-    /1/1/0.png
-    /1/0/1.png
-    /1/1/1.png
-```
-
 Contarary to the github language stats, it is 100% C.
+
+####Example
+
+######Command
+
+```
+Retile /sample/6 /sample
+```
+
+######Diagram
+
+```
+         z=6
++---------+---------+
+|         |         |                       z=5
+| (56,24) | (57,24) |                  +---------+
+|         |         |                  |         |
++---------+---------+   -> Retile ->   | (28,12) |
+|         |         |                  |         |
+| (56,25) | (57,25) |                  +---------+
+|         |         |
++---------+---------+
+
+    /6/56/24.png                      /5/28/12.png
+    /6/57/24.png
+    /6/56/25.png
+    /6/57/25.png
+```
+
+######Actual Input (z=6) and Output (z=5)
+
+z=6  | 56   |   57
+---- | ---- | ----
+24   | ![56,24@6](https://github.com/Safecast/Retile/raw/master/sample/6/56/24.png) | ![57,24@6](https://github.com/Safecast/Retile/raw/master/sample/6/57/24.png)
+25   | ![56,25@6](https://github.com/Safecast/Retile/raw/master/sample/6/56/25.png) | ![57,25@6](https://github.com/Safecast/Retile/raw/master/sample/6/57/25.png)
+
+z=5  | 28   
+---- | ----
+12    | ![28,12@5](https://github.com/Safecast/Retile/raw/master/sample/5/28/12.png)
+
 
 ##Why would I run this?
 

@@ -77,7 +77,6 @@ static inline void _vSIMD_vscgtsubcvtu8_NEON(const uint16_t* src,
         
         vst1_u8( &(dest[i]), d_u8x8);
     }//for
-    
 #endif
 }//_vSIMD_vscgtsubcvtu8_NEON
 

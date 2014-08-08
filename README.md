@@ -5,6 +5,24 @@ Reprocess raster map tiles.
 
 Primarily, Retile works to create downsampled zoom levels for web map tiles.  Sort of like gdal2tiles, only it takes a directory of PNG files as an input, not a huge monolithic raster.
 
+```
+       z=1
++-------+-------+
+|       |       |                     z=0
+| (0,0) | (1,0) |                  +-------+
+|       |       |                  |       |
++-------+-------+   -> Retile ->   | (0,0) |
+|       |       |                  |       |
+| (0,1) | (1,1) |                  +-------+
+|       |       |
++-------+-------+
+
+    /1/0/0.png                     /0/0/0.png
+    /1/1/0.png
+    /1/0/1.png
+    /1/1/1.png
+```
+
 Contarary to the github language stats, it is 100% C.
 
 ##Why would I run this?

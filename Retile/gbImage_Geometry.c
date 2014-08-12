@@ -1338,9 +1338,9 @@ void gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888(const uint8_t* src,
             idx_D = (srcY + (srcY + 1 < src_h ? 1 : 0)) * srcProcWidth + x;     // ( 0, +1)
             
             idx_1 = destY_destProcWidth + x * zoomScaleX;                                       // ( 0,  0)
-            idx_2 = idx_1 + (x + 1 < destProcWidth ? 1 : 0);                                    // ( 0, +1)
+            idx_2 = idx_1 + (x + 1 < dest_w ? 1 : 0);                                           // ( 0, +1)
             idx_3 = (destY + (destY + 1 < dest_h ? 1 : 0)) * destProcWidth + x * zoomScaleX;    // (+1,  0)
-            idx_4 = idx_3 + (x + 1 < destProcWidth ? 1 : 0);                                    // (+1, +1)
+            idx_4 = idx_3 + (x + 1 < dest_w ? 1 : 0);                                           // (+1, +1)
 
             A = src_u32[idx_A]; // order by mem order
             C = src_u32[idx_C];
@@ -1440,14 +1440,14 @@ void gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888(const uint8_t* src,
             idx_D = (srcY + (srcY + 1 < src_h ? 1 : 0)) * srcProcWidth + x;     // ( 0, +1)
             
             idx_E = idx_A - (x > 0 ? 1 : 0);
-            idx_F = idx_A + (x + 1 < srcProcWidth ? 1 : 0);
+            idx_F = idx_A + (x + 1 < src_w ? 1 : 0);
             idx_G = idx_D - (x > 0 ? 1 : 0);
-            idx_H = idx_D + (x + 1 < srcProcWidth ? 1 : 0);
+            idx_H = idx_D + (x + 1 < src_w ? 1 : 0);
             
             idx_1 = destY_destProcWidth + x * zoomScaleX;                                       // ( 0,  0)
-            idx_2 = idx_1 + (x + 1 < destProcWidth ? 1 : 0);                                    // ( 0, +1)
+            idx_2 = idx_1 + (x + 1 < dest_w ? 1 : 0);                                    // ( 0, +1)
             idx_3 = (destY + (destY + 1 < dest_h ? 1 : 0)) * destProcWidth + x * zoomScaleX;    // (+1,  0)
-            idx_4 = idx_3 + (x + 1 < destProcWidth ? 1 : 0);                                    // (+1, +1)
+            idx_4 = idx_3 + (x + 1 < dest_w ? 1 : 0);                                    // (+1, +1)
             
             // order by mem order
             

@@ -77,6 +77,7 @@ static inline void _vSIMD_vscgtsubcvtu8_NEON(const uint16_t* src,
         
         vst1_u8( &(dest[i]), d_u8x8);
     }//for
+    
 #endif
 }//_vSIMD_vscgtsubcvtu8_NEON
 
@@ -421,7 +422,7 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         // <zlib>
         png_set_compression_level(png_ptr, 9);          // RLE=1
         png_set_compression_strategy(png_ptr, 0);       // RLE=3
-        png_set_filter(png_ptr, 0, PNG_FILTER_NONE);    // filters are only useful for webpage gradients
+        png_set_filter(png_ptr, 0, PNG_NO_FILTERS);    // filters are only useful for webpage gradients
         // </zlib>
         
         png_init_io(png_ptr, fp);

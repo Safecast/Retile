@@ -67,6 +67,23 @@
 #include <Accelerate/Accelerate.h>
 
 
+
+
+typedef int Retile_TemplateFormatType; enum
+{
+    kRetile_Template_OSM = 0,
+    kRetile_Template_ZXY = 1,
+    kRetile_Template_XYZ = 2
+};
+
+typedef int Retile_OpModeType; enum
+{
+    kRetile_OpMode_Downsample = 0,
+    kRetile_OpMode_Enlarge    = 1,
+};
+
+
+
 // ==================
 // _atoi_single_char:
 // ==================
@@ -239,12 +256,19 @@ void _TempParseFilenameXYZ_OSM(const char*  src,
                                uint32_t*    y,
                                uint32_t*    z)
 {
+    //printf("Parsing filename [%s] o=%zu\n", src, offset);
+    
     uint32_t _x = UINT32_MAX;
     uint32_t _y = UINT32_MAX;
     uint32_t _z = UINT32_MAX;
     size_t dot  = UINT32_MAX;
     size_t us[3];
-    memset(us, UINT32_MAX, sizeof(size_t) * 3);
+    
+    for (size_t i=0; i<3; i++)
+    {
+        us[i] = UINT32_MAX;
+    }//for
+    
     size_t uc = 0;
     
     //printf("offset=%zu, srclen=%zu\n", offset, strlen(src));
@@ -277,10 +301,12 @@ void _TempParseFilenameXYZ_OSM(const char*  src,
         _y = _atoi_by_idx(src, y_start, y_len);
     }//if
     
+    //printf("Parsed x=%d, y=%d, z=%d\n", (int)_x, (int)_y, (int)_z);
+    
     *x = _x;
     *y = _y;
     *z = _z;
-}//_GetFilenameXYZ
+}//_TempParseFilenameXYZ_OSM
 
 
 // ======================
@@ -306,7 +332,10 @@ void _TempParseFilenameXYZ(const char*  src,
     uint32_t _z = UINT32_MAX;
     size_t dot  = UINT32_MAX;
     size_t us[3];
-    memset(us, UINT32_MAX, sizeof(size_t) * 3);
+    for (size_t i=0; i<3; i++)
+    {
+        us[i] = UINT32_MAX;
+    }//for
     size_t uc = 0;
     
     //printf("offset=%zu, srclen=%zu\n", offset, strlen(src));
@@ -388,19 +417,24 @@ void _ParseXYZ_FromTemplate(const char* src,
 {
     switch (urlTemplateId)
     {
-        case 0:
+        case kRetile_Template_OSM:
             _TempParseFilenameXYZ_OSM(src, _GetPathSlashOffset(src, 3) + 1, x, y, z);;
             break;
-        case 1:
+        case kRetile_Template_ZXY:
             _TempParseFilenameZXY(src, _GetPathSlashOffset(src, 0), x, y, z);
             break;
-        case 2:
+        case kRetile_Template_XYZ:
             _TempParseFilenameXYZ(src, _GetPathSlashOffset(src, 0), x, y, z);
             break;
     }//switch
 }//_ParseXYZ_FromTemplate
 
 
+//Parsing filename [/Users/ndolezal/Downloads/TileGriddata/test/13/6/3520.png] o=39
+
+// /Users/ndolezal/Downloads/TileGriddata/test/13/6/3520.png
+//           1         2         3        |
+// 0123456789012345678901234567890123456789
 
 // =========================
 // _ParseAnddAddFileXYZ_ToDB
@@ -424,7 +458,7 @@ static inline void _ParseAnddAddFileXYZ_ToDB(const char*    filename,
     char     filepath[1024];
     int      result;
     
-    if (urlTemplateId == 0)
+    if (urlTemplateId == kRetile_Template_OSM)
     {
         _StringByAppendingPathComponent(filepath, srcPath, filename);
         _ParseXYZ_FromTemplate(filepath, &x, &y, &z, urlTemplateId);
@@ -494,18 +528,24 @@ static inline void _ParsePathToDB(const char*    srcPath,
         tinydir_file file;
         tinydir_readfile(&dir, &file);
         
-        if (!file.is_dir)
+        if (!file.is_dir
+            && file.name[0] != '.') // ignore annoying things like .DS_Store (or, even worse, unpacked .filename metadata copying HFS -> FAT32)
         {
+            //printf("Found file: [%s] ... path: [%s]\n", file.name, srcPath);
+            
             _ParseAnddAddFileXYZ_ToDB(file.name, srcPath, db, insertStmt, n, urlTemplateId);
         }//if
         else if (isRecursive
                   && (strnlen(file.name, 1024) != 1 || strcmp(file.name, ".")  != 0)
-                  && (strnlen(file.name, 1024) != 2 || strcmp(file.name, "..") != 0))
+                  && (strnlen(file.name, 1024) != 2 || strcmp(file.name, "..") != 0)
+                  && file.name[0] != '.')
         {
             char* subPath = malloc(sizeof(char) * strnlen(srcPath, 1024) + 1UL); // heap to reduce stack pressure from multiple recursions
             
             _StringByAppendingPathComponent(subPath, srcPath, file.name);
-
+            
+            //printf("Found subpath: [%s]\n", subPath);
+            
             _ParsePathToDB(subPath, db, insertStmt, n, urlTemplateId, isRecursive);
             
             free(subPath);
@@ -804,17 +844,18 @@ static inline void _FreeRetileBuffersData(Retile_Buffer* src,
 
 
 
-// ================================================
-// _ResampleCompressAndWrite_RetileBuffers_RGBA8888
-// ================================================
+// ==================================================
+// _DownsampleCompressAndWrite_RetileBuffers_RGBA8888
+// ==================================================
 //
 // For references to a group of tiles in rt_bufs,
 // read, decompess, resample, composite, compress and write a PNG file.
 //
-static inline void _ResampleCompressAndWrite_RetileBuffers_RGBA8888(const char*    filepath,
-                                                                    Retile_Buffer* rt_bufs,
-                                                                    const size_t   rt_buf_n,
-                                                                    const bool     alsoReprocessSrc)
+static inline void _DownsampleCompressAndWrite_RetileBuffers_RGBA8888(const char*    filepath,
+                                                                      Retile_Buffer* rt_bufs,
+                                                                      const size_t   rt_buf_n,
+                                                                      const bool     alsoReprocessSrc,
+                                                                      const int interpolationTypeId)
 {
     size_t   local_width    = 256;
     size_t   local_height   = 256;
@@ -853,7 +894,8 @@ static inline void _ResampleCompressAndWrite_RetileBuffers_RGBA8888(const char* 
                                                  (uint8_t*)local_rgba,
                                                  local_x, local_y, local_z,
                                                  rt_bufs[i].rowBytes / rt_bufs[i].width,
-                                                 rt_bufs[i].width, rt_bufs[i].height, rt_bufs[i].rowBytes);
+                                                 rt_bufs[i].width, rt_bufs[i].height, rt_bufs[i].rowBytes,
+                                                 interpolationTypeId);
                 
                 if (alsoReprocessSrc)
                 {
@@ -877,12 +919,12 @@ static inline void _ResampleCompressAndWrite_RetileBuffers_RGBA8888(const char* 
     
     free(local_rgba);
     local_rgba = NULL;
-}//_ResampleCompressAndWriteTile_RetileBuffers_RGBA8888
+}//_DownsampleCompressAndWriteTile_RetileBuffers_RGBA8888
 
 
-// ================================================================
-// _ResampleCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888
-// ================================================================
+// ==================================================================
+// _DownsampleCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888
+// ==================================================================
 //
 // Wrapper for _ResampleCompressAndWrite_RetileBuffers_RGBA8888 that uses Apple's
 // GCD thread pooling.
@@ -891,13 +933,14 @@ static inline void _ResampleCompressAndWrite_RetileBuffers_RGBA8888(const char* 
 // 2. Waits for parallelism limit semaphore. (sema_write) (blocking)
 // 3. Locks and decrements queue_n when done (sema_idx)
 //
-static inline void _ResampleCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888(const char*          filepath,
-                                                                                    Retile_Buffer*       rt_bufs,
-                                                                                    const size_t         rt_buf_n,
-                                                                                    dispatch_semaphore_t sema_write,
-                                                                                    dispatch_semaphore_t sema_idx,
-                                                                                    int*                 queue_n,
-                                                                                    const bool           alsoReprocessSrc)
+static inline void _DownsampleCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888(const char*          filepath,
+                                                                                      Retile_Buffer*       rt_bufs,
+                                                                                      const size_t         rt_buf_n,
+                                                                                      dispatch_semaphore_t sema_write,
+                                                                                      dispatch_semaphore_t sema_idx,
+                                                                                      int*                 queue_n,
+                                                                                      const bool           alsoReprocessSrc,
+                                                                                      const int            interpolationTypeId)
 {
 #ifdef __ACCELERATE__
     // copy filenames and refs synchronously, as they are stack alloc / reused
@@ -915,7 +958,7 @@ static inline void _ResampleCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
-        _ResampleCompressAndWrite_RetileBuffers_RGBA8888(local_filepath, local_rt_bufs, local_rt_buf_n, alsoReprocessSrc);
+        _DownsampleCompressAndWrite_RetileBuffers_RGBA8888(local_filepath, local_rt_bufs, local_rt_buf_n, alsoReprocessSrc, interpolationTypeId);
         
         _FreeRetileBuffersData(local_rt_bufs, local_rt_buf_n);
         free(local_filepath);
@@ -926,7 +969,7 @@ static inline void _ResampleCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8
         _IncDecrementWithSemaphore(queue_n, sema_idx, false, true);
     });
 #endif
-}//_CompressAndWriteTile_RetileBuffers_DispatchWrapper_RGBA8888
+}//_DownsampleCompressAndWriteTile_RetileBuffers_DispatchWrapper_RGBA8888
 
 
 
@@ -1001,9 +1044,9 @@ static inline void _GetFilepathAndCreateIntermediatePathsIfNeeded(char*         
 
 
 
-// ====================
-// _ProcessTilesFromDB:
-// ====================
+// =======================
+// _QueueDownsampleFromDB:
+// =======================
 //
 // Main raster tile pyramid level downsampling (z -> z-1) function.
 //
@@ -1023,10 +1066,11 @@ static inline void _GetFilepathAndCreateIntermediatePathsIfNeeded(char*         
 // (even in single threaded mode, this function does no processing, it merely
 //  queues the work up and accumulates references.)
 //
-void _ProcessTilesFromDB(const char* destPath,
-                         const char* dbFilePath,
-                         const int   urlTemplateId,
-                         const bool  alsoReprocessSrc)
+void _QueueDownsampleFromDB(const char* destPath,
+                            const char* dbFilePath,
+                            const int   urlTemplateId,
+                            const bool  alsoReprocessSrc,
+                            const int   interpolationTypeId)
 {
     int       row      = 0;
     int       queue_n  = 0;
@@ -1130,12 +1174,12 @@ void _ProcessTilesFromDB(const char* destPath,
                                                            urlTemplateId);
 
 #ifdef __ACCELERATE__
-            _ResampleCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888(dest_filepath, rt_bufs, rt_buf_n,
-                                                                             _sema_write, _sema_idx, &queue_n,
-                                                                             alsoReprocessSrc);
+            _DownsampleCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888(dest_filepath, rt_bufs, rt_buf_n,
+                                                                               _sema_write, _sema_idx, &queue_n,
+                                                                               alsoReprocessSrc, interpolationTypeId);
 #else
-            _ResampleCompressAndWrite_RetileBuffers_RGBA8888(dest_filepath, rt_bufs, rt_buf_n,
-                                                             alsoReprocessSrc);
+            _DownsampleCompressAndWrite_RetileBuffers_RGBA8888(dest_filepath, rt_bufs, rt_buf_n,
+                                                               alsoReprocessSrc, interpolationTypeId);
 #endif
             
             _FreeRetileBuffersData(rt_bufs, rt_buf_n);
@@ -1238,7 +1282,417 @@ void _ProcessTilesFromDB(const char* destPath,
     gbDB_CloseDBConnAndQueryStmt(db, selectStmt);
     
     printf("[z=%d]: Done.\n", (int)dest_z);
-}//_ProcessTilesFromDB
+}//_QueueDownsampleFromDB
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ===============================================
+// _EnlargeCompressAndWrite_RetileBuffers_RGBA8888
+// ===============================================
+//
+// For references to a group of tiles in rt_bufs,
+// read, decompess, resample, composite, compress and write a PNG file.
+//
+static inline void _EnlargeCompressAndWrite_RetileBuffers_RGBA8888(const char*    rootPath,
+                                                                   Retile_Buffer* rt_bufs,
+                                                                   const size_t   rt_buf_n,
+                                                                   const bool     alsoReprocessSrc,
+                                                                   const uint32_t dest_z,
+                                                                   const int      urlTemplateId,
+                                                                   const int      interpolationTypeId)
+{
+    size_t   local_width    = 256;
+    size_t   local_height   = 256;
+    size_t   local_rowBytes = 1024;
+    uint32_t y;
+    uint32_t x;
+    size_t   valid_n        = 0;
+    uint32_t _last_path_created_x = UINT32_MAX;
+    uint32_t _last_path_created_z = UINT32_MAX;
+    
+    uint32_t* local_rgba = malloc(sizeof(uint8_t) * local_height * local_rowBytes);
+    
+    memset(local_rgba, 0, sizeof(uint32_t) * local_height * local_width);
+    
+    char dest_filepath[1024] __attribute__ ((aligned(16)));
+    
+    bool roiWasEmpty;
+    
+    uint32_t start_y;
+    uint32_t end_y;
+    uint32_t start_x;
+    uint32_t end_x;
+    uint32_t zs;
+    
+    for (size_t i = 0; i < rt_buf_n; i++)
+    {
+        if (rt_bufs[i].filename != NULL)
+        {
+            gbImage_PNG_Read_RGBA8888(  rt_bufs[i].filename,
+                                      &(rt_bufs[i].data),
+                                      &(rt_bufs[i].width),
+                                      &(rt_bufs[i].height),
+                                      &(rt_bufs[i].rowBytes));
+            
+            if (rt_bufs[i].data != NULL)
+            {
+                _FixDestTileBufferIfNeeded(&local_rgba,
+                                           &local_width,     &local_height,     &local_rowBytes,
+                                           rt_bufs[i].width, rt_bufs[i].height, rt_bufs[i].rowBytes);
+                
+                zs      = dest_z - rt_bufs[i].z;
+                
+                start_y = rt_bufs[i].y << zs;
+                end_y   = start_y            + (1 << zs);
+                start_x = rt_bufs[i].x << zs;
+                end_x   = start_x            + (1 << zs);
+                
+                for (y = start_y; y < end_y; y++)
+                {
+                    for (x = start_x; x < end_x; x++)
+                    {
+                        gbImage_Resize_EnlargeTile_RGBA8888((uint8_t*)(rt_bufs[i].data),
+                                                            (uint8_t*)local_rgba,
+                                                            rt_bufs[i].z,
+                                                            x, y, dest_z,
+                                                            rt_bufs[i].width, rt_bufs[i].height,
+                                                            interpolationTypeId,
+                                                            &roiWasEmpty);
+                        
+                        if (!roiWasEmpty) // quite possible to zoom into nothingness on a tile, don't write those.
+                        {
+                            _GetFilepathAndCreateIntermediatePathsIfNeeded(dest_filepath, rootPath,
+                                                                           x, y, dest_z,
+                                                                           &_last_path_created_x, &_last_path_created_z,
+                                                                           urlTemplateId);
+                            
+                            gbImage_PNG_Write_RGBA8888(dest_filepath, local_width, local_height, (uint8_t*)local_rgba);
+                        }//if
+                    }//for
+                }//for
+                
+                
+                if (alsoReprocessSrc)
+                {
+                    gbImage_PNG_Write_RGBA8888(rt_bufs[i].dest_filename, rt_bufs[i].width, rt_bufs[i].height, (uint8_t*)rt_bufs[i].data);
+                    
+                    if (strcmp(rt_bufs[i].filename, rt_bufs[i].dest_filename) != 0)
+                    {
+                        remove(rt_bufs[i].filename); // delete src if different formats
+                    }//if
+                }//if
+                
+                valid_n++;
+            }//if
+        }//if
+    }//for
+    
+    free(local_rgba);
+    local_rgba = NULL;
+}//_EnlargeCompressAndWriteTile_RetileBuffers_RGBA8888
+
+
+// ===============================================================
+// _EnlargeCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888
+// ===============================================================
+//
+// Wrapper for _EnlargeCompressAndWrite_RetileBuffers_RGBA8888 that uses Apple's
+// GCD thread pooling.
+//
+// 1. Copies all src data from the reader.
+// 2. Waits for parallelism limit semaphore. (sema_write) (blocking)
+// 3. Locks and decrements queue_n when done (sema_idx)
+//
+static inline void _EnlargeCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888(const char*          rootPath,
+                                                                                   Retile_Buffer*       rt_bufs,
+                                                                                   const size_t         rt_buf_n,
+                                                                                   dispatch_semaphore_t sema_write,
+                                                                                   dispatch_semaphore_t sema_idx,
+                                                                                   int*                 queue_n,
+                                                                                   const bool           alsoReprocessSrc,
+                                                                                   const uint32_t       dest_z,
+                                                                                   const int            urlTemplateId,
+                                                                                   const int            interpolationTypeId)
+{
+#ifdef __ACCELERATE__
+    // copy filenames and refs synchronously, as they are stack alloc / reused
+    
+    const size_t   local_rt_buf_n = rt_buf_n;
+    char*          local_rootpath = malloc(sizeof(char) * 1024);
+    Retile_Buffer* local_rt_bufs  = malloc(sizeof(Retile_Buffer) * local_rt_buf_n);
+    
+    memcpy(local_rootpath, rootPath, 1024);
+    
+    _CopyRetileBuffers(local_rt_bufs, rt_bufs, local_rt_buf_n);
+    
+    dispatch_semaphore_wait(sema_write, DISPATCH_TIME_FOREVER);
+    
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        
+        _EnlargeCompressAndWrite_RetileBuffers_RGBA8888(local_rootpath, local_rt_bufs, local_rt_buf_n, alsoReprocessSrc, dest_z, urlTemplateId, interpolationTypeId);
+        
+        _FreeRetileBuffersData(local_rt_bufs, local_rt_buf_n);
+        free(local_rootpath);
+        free(local_rt_bufs);
+        
+        dispatch_semaphore_signal(sema_write);
+        
+        _IncDecrementWithSemaphore(queue_n, sema_idx, false, true);
+    });
+#endif
+}//_EnlargeCompressAndWriteTile_RetileBuffers_DispatchWrapper_RGBA8888
+
+
+// ====================
+// _QueueEnlargeFromDB:
+// ====================
+//
+// Main raster tile pyramid level enlarge (z -> z+x) function.
+//
+// This is actually much less tricksy than the downsampling function, no fancy
+// data clustering.
+//
+// If Apple's GCD is present (inferred via the Accelerate framework), this
+// will be multithreaded and use asynchronous processing.
+//
+// (even in single threaded mode, this function does no processing, it merely
+//  queues the work up and accumulates references.)
+//
+void _QueueEnlargeFromDB(const char*    destPath,
+                         const char*    dbFilePath,
+                         const int      urlTemplateId,
+                         const bool     alsoReprocessSrc,
+                         const int      interpolationTypeId,
+                         const uint32_t dest_z_shift)
+{
+    int       row      = 0;
+    int       queue_n  = 0;
+    const int rowCount = gbDB_ExecSQL_Scalar(dbFilePath, "SELECT COUNT(*) FROM TileRef;");
+    const int modCount = ceil((double)rowCount / 10.0);
+    
+#ifdef __ACCELERATE__
+    queue_n = rowCount;
+    
+    dispatch_semaphore_t _sema_idx   = dispatch_semaphore_create(1);
+    dispatch_semaphore_t _sema_write = dispatch_semaphore_create(32);
+#endif
+    
+    if (rowCount == 0)
+    {
+        printf("No tiles were found to read.  Aborting.\n");
+        return;
+    }//if
+    
+    sqlite3*      db;
+    sqlite3_stmt* selectStmt;
+    
+    gbDB_PrepConn_DBPath_CString(dbFilePath, "SELECT X, Y, Z, FilePath FROM TileRef ORDER BY Y/2 * (1 << (Z-1)) + X/2, Y * (1 << Z) + X;", &db, &selectStmt);
+    
+    // <multiread>
+    size_t        rt_buf_i = 0;
+    const size_t  rt_buf_n = 1;
+    
+    Retile_Buffer rt_bufs[rt_buf_n] __attribute__ ((aligned(16)));
+    
+    for (size_t i = 0; i < rt_buf_n; i++)
+    {
+        rt_bufs[i].data          = NULL;
+        rt_bufs[i].width         = 0;
+        rt_bufs[i].height        = 0;
+        rt_bufs[i].rowBytes      = 0;
+        rt_bufs[i].x             = 0;
+        rt_bufs[i].y             = 0;
+        rt_bufs[i].z             = 0;
+        rt_bufs[i].filename      = NULL;
+        rt_bufs[i].dest_filename = NULL;
+    }//for
+    // </multiread>
+    
+    uint32_t _reproc_last_path_created_z = UINT32_MAX;
+    uint32_t _reproc_last_path_created_x = UINT32_MAX;
+    
+    uint32_t src_x  = 0;
+    uint32_t src_y  = 0;
+    uint32_t src_z  = 0;
+    
+    uint32_t dest_x = 0;
+    uint32_t dest_y = 0;
+    uint32_t dest_z = 0;
+    
+    int sqliteStepResult = SQLITE_ROW;
+    
+    mkdir(destPath, 0777);
+    
+    printf("Resampling and writing files (src n=[%d])...\n", rowCount);
+    
+    while (sqliteStepResult == SQLITE_ROW || sqliteStepResult == SQLITE_DONE)
+    {
+        char* filename = NULL;
+        
+        if (sqliteStepResult != SQLITE_DONE)
+        {
+            sqliteStepResult = sqlite3_step(selectStmt);
+        }//if
+        
+        if (sqliteStepResult != SQLITE_DONE)
+        {
+            src_x    = sqlite3_column_int(selectStmt, 0);
+            src_y    = sqlite3_column_int(selectStmt, 1);
+            src_z    = sqlite3_column_int(selectStmt, 2);
+            filename = (char*)sqlite3_column_text(selectStmt, 3);
+            
+            dest_z   = src_z + dest_z_shift;
+            dest_x   = src_x >> (src_z - dest_z);
+            dest_y   = src_y >> (src_z - dest_z);
+            
+            if (filename != NULL)
+            {
+                if (rt_bufs[rt_buf_i].filename != NULL)
+                {
+                    printf("ERR: rt_bufs[%zu] filename was non-null! [%s]\n", rt_buf_i, rt_bufs[rt_buf_i].filename);
+                }//if
+                
+                rt_bufs[rt_buf_i].filename = malloc(sizeof(char) * 1024);
+                memcpy(rt_bufs[rt_buf_i].filename, filename, sizeof(char) * 1024);
+            }//if
+            
+            rt_bufs[rt_buf_i].x = src_x;
+            rt_bufs[rt_buf_i].y = src_y;
+            rt_bufs[rt_buf_i].z = src_z;
+            
+            if (rt_bufs[rt_buf_i].filename != NULL)
+            {
+                if (alsoReprocessSrc)
+                {
+                    rt_bufs[rt_buf_i].dest_filename = malloc(sizeof(char) * 1024);
+                    
+                    _GetFilepathAndCreateIntermediatePathsIfNeeded(rt_bufs[rt_buf_i].dest_filename, destPath,
+                                                                   rt_bufs[rt_buf_i].x, rt_bufs[rt_buf_i].y, rt_bufs[rt_buf_i].z,
+                                                                   &_reproc_last_path_created_x, &_reproc_last_path_created_z,
+                                                                   urlTemplateId);
+                }//if
+                
+                rt_buf_i     = rt_buf_i < rt_buf_n - 1 ? rt_buf_i + 1 : 0;
+            }//if
+        }//if
+        
+        
+        if (src_z > 0 && sqliteStepResult != SQLITE_DONE)
+        {
+#ifdef __ACCELERATE__
+            _EnlargeCompressAndWrite_RetileBuffers_DispatchWrapper_RGBA8888(destPath, rt_bufs, rt_buf_n,
+                                                                            _sema_write, _sema_idx, &queue_n,
+                                                                            alsoReprocessSrc, dest_z, urlTemplateId, interpolationTypeId);
+#else
+            _EnlargeCompressAndWrite_RetileBuffers_RGBA8888(destPath, rt_bufs, rt_buf_n,
+                                                            alsoReprocessSrc, dest_z, urlTemplateId, interpolationTypeId);
+#endif
+            
+            _FreeRetileBuffersData(rt_bufs, rt_buf_n);
+            rt_buf_i = 0;
+        }//if
+
+        if (sqliteStepResult == SQLITE_DONE)
+        {
+            sqliteStepResult = -1;
+            break;
+        }//if
+        
+        if (row % modCount == 0)
+        {
+            printf("[z=%d]: %1.0f%%\n", (int)dest_z, (double)row / (double)rowCount * 100.0);
+        }//if
+        
+        row++;
+    }//while
+    
+    
+#ifdef __ACCELERATE__
+    // Wait for worker queue to empty, but use a long failsafe timeout in case
+    // the initial COUNT DISTINCT did not predict things correctly.
+    // (eg, bad input PNGs, etc)
+    //
+    
+    int polled_n = _IncDecrementWithSemaphore(&queue_n, _sema_idx, false, false);
+    
+    if (polled_n > 0)
+    {
+        printf("[z=%d]: Waiting on compress and write queue: %d\n", (int)dest_z, polled_n);
+        
+        uint32_t        currentSleepMS  = 0;
+        const uint32_t kSleepIntervalMS = 100;                      // 100ms
+        const uint32_t kSleepIntervalUS = kSleepIntervalMS * 1000;  // 100ms -> us
+        const uint32_t kMaxSleepMS      = 60 * 1000;                // 60s   -> ms
+        
+        while (polled_n > 0)
+        {
+            if (polled_n <= 0 || currentSleepMS > kMaxSleepMS)
+            {
+                break;
+            }//if
+            
+            polled_n = _IncDecrementWithSemaphore(&queue_n, _sema_idx, false, false);
+            
+            usleep(kSleepIntervalUS);
+            currentSleepMS += kSleepIntervalMS;
+        }//while
+        
+        if (currentSleepMS > kMaxSleepMS)
+        {
+            printf("[z=%d]: [WARN] Timeout after %d ms while waiting on queue: %d\n", (int)dest_z, (int)kMaxSleepMS, polled_n);
+        }//if
+    }//if
+    
+    dispatch_release(_sema_idx);
+    dispatch_release(_sema_write);
+#endif
+    
+    printf("[z=%d]: 100%%\n", (int)dest_z);
+    
+    printf("[z=%d]: Closing DB and transaction...\n", (int)dest_z);
+    
+    gbDB_CloseDBConnAndQueryStmt(db, selectStmt);
+    
+    printf("[z=%d]: Done.\n", (int)dest_z);
+}//_QueueEnlargeFromDB
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1517,7 +1971,8 @@ static inline void _IterativeRetile(const char* dbFilePath,
                                     const int   dest_max_z,
                                     const int   srcUrlTemplateId,
                                     const int   destUrlTemplateId,
-                                    const bool  alsoReprocessSrc)
+                                    const bool  alsoReprocessSrc,
+                                    const int   interpolationTypeId)
 {
     char* _src_path = malloc(sizeof(char) * 1024);
     char* _comp     = malloc(sizeof(char) * 1024);
@@ -1531,7 +1986,7 @@ static inline void _IterativeRetile(const char* dbFilePath,
                       z == dest_max_z ? srcUrlTemplateId
                                       : destUrlTemplateId);
         
-        _ProcessTilesFromDB(rootPath, dbFilePath, destUrlTemplateId, alsoReprocessSrc && z == dest_max_z);
+        _QueueDownsampleFromDB(rootPath, dbFilePath, destUrlTemplateId, alsoReprocessSrc && z == dest_max_z, interpolationTypeId);
     }//for
     
     free(_src_path);
@@ -1544,21 +1999,86 @@ static inline void _IterativeRetile(const char* dbFilePath,
 
 // these are lazy / test functions.
 
-static inline void _ProductionNoParamRun(const char* dbFilePath, const bool alsoReprocessSrc)
-{
-    //char* rootPath = "/Library/WebServer/Documents/tilemap/TileGriddata/";
+static inline void _ProductionNoParamRun(const char* dbFilePath, const bool alsoReprocessSrc, const int interpolationTypeId)
+{    
+    char* rootPath = "/Library/WebServer/Documents/tilemap/TileGriddata/";
     
-    //_IterativeRetile(dbFilePath, rootPath, 0, 12, 2, 2, alsoReprocessSrc);
+    _IterativeRetile(dbFilePath, rootPath, 0, 12, kRetile_Template_XYZ, kRetile_Template_XYZ, alsoReprocessSrc, interpolationTypeId);
     
-    printf("Prod bypass disabled for test.  Abort.\n");
+    char* src  = "/Library/WebServer/Documents/tilemap/TileGriddata/13";
+    char* dest = "/Library/WebServer/Documents/tilemap/TileGriddata";
+    
+    size_t n = _ReadPathToDB(src, dbFilePath, kRetile_Template_XYZ);
+    
+    if (n > 0)
+    {
+        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_XYZ, alsoReprocessSrc, kGB_Image_Interp_EPX, 1);
+    }//if
+    
+    
+    src = "/Library/WebServer/Documents/tilemap/TileGriddata/14";
+    n   = _ReadPathToDB(src, dbFilePath, kRetile_Template_XYZ);
+    
+    if (n > 0)
+    {
+        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_XYZ, alsoReprocessSrc, kGB_Image_Interp_EPX, 1);
+    }//if
+    
+    //printf("Prod bypass disabled for test.  Abort.\n");
 }//_ProductionNoParamRun
 
 
-static inline void _LocalTestRun(const char* dbFilePath, const bool alsoReprocessSrc)
+static inline void _LocalTestRun(const char* dbFilePath, const bool alsoReprocessSrc, const int interpolationTypeId)
 {
-    //char* rootPath = "/Users/ndolezal/Downloads/TileGriddata/";
     
-    //_IterativeRetile(dbFilePath, rootPath, 0, 12, 2, 0, alsoReprocessSrc);
+    /*
+    char* rootPath = "/Users/ndolezal/Downloads/TileGriddata/";
+    
+    _IterativeRetile(dbFilePath, rootPath, 0, 12, kRetile_Template_OSM, kRetile_Template_OSM, alsoReprocessSrc, interpolationTypeId);
+    
+    char* src  = "/Users/ndolezal/Downloads/TileGriddata/13";
+    char* dest = "/Users/ndolezal/Downloads/TileGriddata";
+    
+    size_t n = _ReadPathToDB(src, dbFilePath, kRetile_Template_OSM);
+    
+    if (n > 0)
+    {
+        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_OSM, alsoReprocessSrc, kGB_Image_Interp_EPX, 1);
+    }//if
+    
+    src = "/Users/ndolezal/Downloads/TileGriddata/14";
+    n   = _ReadPathToDB(src, dbFilePath, kRetile_Template_OSM);
+    
+    if (n > 0)
+    {
+        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_OSM, alsoReprocessSrc, kGB_Image_Interp_EPX, 1);
+    }//if
+    */
+    
+    /*
+    uint32_t* src = NULL;
+    size_t src_w;
+    size_t src_h;
+    size_t src_rb;
+    
+    gbImage_PNG_Read_RGBA8888("/Users/ndolezal/Downloads/lenna.png", &src, &src_w, &src_h, &src_rb);
+    
+    size_t dest_w  = src_w  * 2;
+    size_t dest_h  = src_h  * 2;
+    size_t dest_rb = src_rb * 2;
+    
+    uint32_t* dest = malloc(sizeof(uint32_t) * dest_w * dest_h);
+    
+    
+    //gbImage_Resize_vImage_Lanczos5x5_RGBA8888((uint8_t*)src, (uint8_t*)dest, src_w, src_h, src_rb, dest_w, dest_h, dest_rb);
+    gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888((uint8_t*)src, src_w, src_h, src_rb, (uint8_t*)dest, dest_w, dest_h, dest_rb);
+    //gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888((uint8_t*)src, src_w, src_h, src_rb, (uint8_t*)dest, dest_w, dest_h, dest_rb);
+    
+    gbImage_PNG_Write_RGBA8888("/Users/ndolezal/Downloads/lenna_epx2x.png", dest_w, dest_h, (uint8_t*)dest);
+    
+    free(src);
+    free(dest);
+    */
     
     printf("Local bypass disabled for test.  Abort.\n");
 }//_LocalTestRun
@@ -1612,9 +2132,9 @@ int main(int argc, const char * argv[])
     int64_t     st                    = CURRENT_TIMESTAMP();
 
     // lazy overrides
-    const bool  LOCAL_NO_PARAM_BYPASS = true;
-    const bool  PROD_NO_PARAM_BYPASS  = true;   // overrides local no param bypass
-    const bool  REPROC_SRC_BYPASS     = true;
+    const bool  LOCAL_NO_PARAM_BYPASS = false;
+    const bool  PROD_NO_PARAM_BYPASS  = true;  // overrides local no param bypass
+    const bool  REPROC_SRC_BYPASS     = true;  // crushes src in-place for no param modes
     
     
     // stuff the user types in
@@ -1622,13 +2142,15 @@ int main(int argc, const char * argv[])
     char*       destPath              = NULL;
     bool        alsoReprocessSrc      = false;
     bool        showHelp              = false;
-    int         srcFormatId           = 0;
-    int         destFormatId          = 0;
+    int         srcFormatId           = kRetile_Template_OSM;
+    int         destFormatId          = kRetile_Template_OSM;
+    int         interpolationTypeId   = -9000;
+    int         opMode                = kRetile_OpMode_Downsample;
     
 #ifdef __ACCELERATE__
-    printf("Retile: Accelerate framework enabled. Using vImage Lanczos 3x3 for resampling.\n");
+    printf("Retile: Accelerate framework enabled. Lanczos is available.\n");
     // if Accelerate, then GCD is also availabe...
-    printf("Retile: Multithreading via Grand Central Dispatch thread pooling enabled.\n");
+    printf("Retile: Multithreading via libdispatch thread pooling enabled.\n");
 #endif
     
     for (int i=0; i<argc; i++)
@@ -1643,29 +2165,67 @@ int main(int argc, const char * argv[])
         }//else if
         else if (strncmp(argv[i], "-inOSM", 4) == 0)
         {
-            srcFormatId = 0;
+            srcFormatId = kRetile_Template_OSM;
         }//else if
         else if (strncmp(argv[i], "-inZXY", 4) == 0)
         {
-            srcFormatId = 1;
+            srcFormatId = kRetile_Template_ZXY;
         }//else if
         else if (strncmp(argv[i], "-inXYZ", 4) == 0)
         {
-            srcFormatId = 2;
+            srcFormatId = kRetile_Template_XYZ;
         }//else if
         else if (strncmp(argv[i], "-outOSM", 5) == 0)
         {
-            destFormatId = 0;
+            destFormatId = kRetile_Template_OSM;
         }//else if
         else if (strncmp(argv[i], "-outZXY", 5) == 0)
         {
-            destFormatId = 1;
+            destFormatId = kRetile_Template_ZXY;
         }//else if
         else if (strncmp(argv[i], "-outXYZ", 5) == 0)
         {
-            destFormatId = 2;
+            destFormatId = kRetile_Template_XYZ;
+        }//else if
+        else if (strncmp(argv[i], "-zIn", 4) == 0)
+        {
+            opMode = kRetile_OpMode_Enlarge;
+        }//else if
+        else if (strncmp(argv[i], "-zOut", 5) == 0)
+        {
+            opMode = kRetile_OpMode_Downsample;
+        }//else if
+        else if (strncmp(argv[i], "-interpEX", 9) == 0)
+        {
+            interpolationTypeId = kGB_Image_Interp_EPX;
+        }//else if
+        else if (strncmp(argv[i], "-interpL3", 9) == 0)
+        {
+            interpolationTypeId = kGB_Image_Interp_Lanczos3x3;
+        }//else if
+        else if (strncmp(argv[i], "-interpL5", 9) == 0)
+        {
+            interpolationTypeId = kGB_Image_Interp_Lanczos5x5;
+        }//else if
+        else if (strncmp(argv[i], "-interpNN", 9) == 0)
+        {
+            interpolationTypeId = kGB_Image_Interp_NN;
+        }//else if
+        else if (strncmp(argv[i], "-interpBI", 9) == 0)
+        {
+            interpolationTypeId = kGB_Image_Interp_Bilinear;
+        }//else if
+        else if (strncmp(argv[i], "-interpAV", 9) == 0)
+        {
+            interpolationTypeId = kGB_Image_Interp_Average;
         }//else if
     }//for
+    
+    // set interp default for op mode
+    if (interpolationTypeId == -9000)
+    {
+        interpolationTypeId = opMode == kRetile_OpMode_Enlarge ? kGB_Image_Interp_EPX : kGB_Image_Interp_Lanczos3x3;
+    }//if
 
     
     printf("argc:       %d\n", argc);
@@ -1673,15 +2233,23 @@ int main(int argc, const char * argv[])
     printf("-reprocess: %d\n", alsoReprocessSrc ? 1 : 0);
     printf("-srcFmt:    %s\n", srcFormatId  == 0 ? "OSM" : srcFormatId  == 1 ? "ZXY" : "XYZ");
     printf("-destFmt:   %s\n", destFormatId == 0 ? "OSM" : destFormatId == 1 ? "ZXY" : "XYZ");
+    printf("-interp:    %s\n", interpolationTypeId == kGB_Image_Interp_Average    ? "AV"
+                             : interpolationTypeId == kGB_Image_Interp_Bilinear   ? "BI"
+                             : interpolationTypeId == kGB_Image_Interp_Eagle      ? "EA"
+                             : interpolationTypeId == kGB_Image_Interp_EPX        ? "EX"
+                             : interpolationTypeId == kGB_Image_Interp_Lanczos3x3 ? "L3"
+                             : interpolationTypeId == kGB_Image_Interp_Lanczos5x5 ? "L5"
+                             :                                                      "NN");
+    printf("-zdir:      %s\n", opMode == kRetile_OpMode_Downsample ? "Out" : "In");
     
-    if (argc <= 1 || showHelp)
+    if (showHelp || (argc <= 1 && !PROD_NO_PARAM_BYPASS && !LOCAL_NO_PARAM_BYPASS))
     {
         //      01234567890123456789012345678901234567890123456789012345678901234567890123456789
         printf("+--------+--------------------------------------------------------+----------+\n");
-        printf("| Retile |      Retiles a single zoom level of tiles to z-1.      | PNG Only |\n");
+        printf("| Retile |     Retiles a single zoom level of tiles to z+/-1.     | PNG Only |\n");
         printf("+--------+--------------------------------------------------------+----------+\n");
         printf("\n");
-        printf("Usage: retile <in_path> <out_path> -reprocess <in_fmt> <out_fmt>\n");
+        printf("Use: retile <in_path> <out_path> -reprocess <in_fmt> <out_fmt> <interp> <zdir>\n");
         printf("\n");
         printf("out_path will get /{z}/ appended to it automatically.\n");
         printf("\n");
@@ -1699,11 +2267,34 @@ int main(int argc, const char * argv[])
         printf("<out_fmt>:  Optional.  A URL template, one of: { -outOSM, -outZXY, -outXYZ }.\n");
         printf("            Default is [-outOSM].\n");
         printf("\n");
+        printf("<interp>:   Optional.  Interpolation type, one of:\n");
+        printf("            Zoom In:  { -interpEX, -interpL3, -interpL5, -interpNN, -interpBI }\n");
+        printf("            Zoom Out: { -interpAV, -interpL3, -interpL5                       }\n");
+        printf("            Default is [-interpEX] (in) and [-interpL3] (out).\n");
+        printf("\n");
+        printf("<zdir>:     Optional. Direction of zoom, one of: { -zIn, -zOut }.\n");
+        printf("            [-zOut] creates tiles for zoom level -1, downsampling them.\n");
+        printf("            [-zIn]  creates tiles for zoom level +1, enlarging them.\n");
+        printf("            Default is [-zOut].\n");
+        printf("\n");
         printf("Format info:\n");
         printf("------------\n");
         printf("-inOSM, -outOSM: /{z}/{x}/{y}.png       (OpenStreetMaps convention)\n");
         printf("-inZXY, -outZXY: /{z}/*_{z}_{x}_{y}.png\n");
         printf("-inXYZ, -outXYZ: /{z}/*_{x}_{y}_{z}.png\n");
+        printf("\n");
+        printf("Interpolation info:\n");
+        printf("-------------------\n");
+        printf("-interpNN: Nearest Neighbor             (enlarge only)\n");
+        printf("-interpBI: Bilinear\n");
+        printf("-interpL3: Lanczos 3x3*                 (*only on OS X)\n");
+        printf("-interpL5: Lanczos 5x5*                 (*only on OS X)\n");
+        printf("-interpEX: EPX                          (enlarge only)\n");
+        printf("-interpAV: Average                      (downsample only)\n");
+        printf("\n");
+        printf("EPX aka Scale2x is an edge-detecting variant of NN for resizing pixel art\n");
+        printf("and images of limited color depth.  It is significantly superior for those\n");
+        printf("cases, but Lanczos is preferable for photographic imagery.\n");
         printf("\n");
         printf("(Only tested with 256x256 tiles.  Google Maps y-axis convention only.)\n");
         
@@ -1711,11 +2302,11 @@ int main(int argc, const char * argv[])
     }//if
     else if (argc < 3 && PROD_NO_PARAM_BYPASS)
     {
-        _ProductionNoParamRun(dbFilePath, REPROC_SRC_BYPASS);
+        _ProductionNoParamRun(dbFilePath, REPROC_SRC_BYPASS, interpolationTypeId);
     }//if
     else if (argc < 3 && LOCAL_NO_PARAM_BYPASS)
     {
-        _LocalTestRun(dbFilePath, REPROC_SRC_BYPASS);
+        _LocalTestRun(dbFilePath, REPROC_SRC_BYPASS, interpolationTypeId);
     }//else if
     else if (argc >= 2)
     {
@@ -1726,7 +2317,14 @@ int main(int argc, const char * argv[])
         
         if (n > 0)
         {
-            _ProcessTilesFromDB(destPath, dbFilePath, destFormatId, alsoReprocessSrc);
+            if (opMode == kRetile_OpMode_Downsample)
+            {
+                _QueueDownsampleFromDB(destPath, dbFilePath, destFormatId, alsoReprocessSrc, interpolationTypeId);
+            }//if
+            else
+            {
+                _QueueEnlargeFromDB(destPath, dbFilePath, destFormatId, alsoReprocessSrc, interpolationTypeId, 1);
+            }//else
         }//if
         else
         {

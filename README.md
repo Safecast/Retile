@@ -104,7 +104,7 @@ This is, in fact, the same basic problem emulators have trying to upscale pixel 
 More info: https://en.wikipedia.org/wiki/Image_scaling
 
 
-For satellite or aerial imagery, Lanczos is probably your best bet.  If I included a comparison of the prototypical Lenana image, Lanczos would win.  For non-imagery with a limited color palette?  Well, see below.
+For satellite or aerial imagery, Lanczos is probably your best bet.  If I included a comparison of the prototypical Lenna image, Lanczos would win.  For non-imagery with a limited color palette?  Well, see below.
 
 
 ##tl;dr, Resampling Method Comparison

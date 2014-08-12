@@ -55,6 +55,10 @@ If you had a single zoom level of tiles for a web map, and wanted to create othe
 
 Tell me about it.
 
+##Ok, I'm sold and want to run it but I'm not a developer...?
+
+If you're running OS X, you're in luck.  Just download the current release binary from https://github.com/Safecast/Retile/releases
+
 ##Are there any examples of this in use?
 
 Yes.  http://safecast.org/tilemap uses Retile on the webserver to "crush" the Safecast interpolation overlay tiles, as well as create zoom levels 0 - 12, and 14 - 15.  It is otherwise prohibitive to run a new interpolation for every zoom level, so Retile not only saves a great deal of computational time but also removes pngcrush from the workflow.

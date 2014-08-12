@@ -1333,7 +1333,7 @@ void gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888(const uint8_t* src,
             
             idx_P = srcY_srcProcWidth + x;                                      // ( 0,  0)
             idx_A = (srcY - (srcY > 0 ? 1 : 0)) * srcProcWidth + x;             // ( 0, -1)
-            idx_B = idx_P + (x + 1 < srcProcWidth ? 1 : 0);                     // (+1,  0)
+            idx_B = idx_P + (x + 1 < src_w ? 1 : 0);                            // (+1,  0)
             idx_C = idx_P - (x > 0 ? 1 : 0);                                    // (-1,  0)
             idx_D = (srcY + (srcY + 1 < src_h ? 1 : 0)) * srcProcWidth + x;     // ( 0, +1)
             
@@ -1435,7 +1435,7 @@ void gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888(const uint8_t* src,
             
             idx_P = srcY_srcProcWidth + x;                                      // ( 0,  0)
             idx_A = (srcY - (srcY > 0 ? 1 : 0)) * srcProcWidth + x;             // ( 0, -1)
-            idx_B = idx_P + (x + 1 < srcProcWidth ? 1 : 0);                     // (+1,  0)
+            idx_B = idx_P + (x + 1 < src_w ? 1 : 0);                            // (+1,  0)
             idx_C = idx_P - (x > 0 ? 1 : 0);                                    // (-1,  0)
             idx_D = (srcY + (srcY + 1 < src_h ? 1 : 0)) * srcProcWidth + x;     // ( 0, +1)
             

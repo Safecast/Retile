@@ -3,7 +3,7 @@ Retile
 
 Reprocess raster map tiles.
 
-Primarily, Retile works to create downsampled (or enlarged) zoom levels for web map tiles.  Sort of like gdal2tiles, only it takes a directory of PNG files as an input, not a huge monolithic raster.
+Primarily, Retile works to create additional zoom levels for web map tiles, either zooming in or out.  Sort of like gdal2tiles, only it takes a directory of PNG files as an input, not a huge monolithic raster.
 
 Contarary to the github language stats, it is 100% C.
 
@@ -61,23 +61,17 @@ Yes.  http://safecast.org/tilemap uses Retile on the webserver to "crush" the Sa
 
 ##Is it fast?
 
-The code is SIMD vectorized and multithreaded, which is to say, yes (it does about 1k tiles per second on an i5/i7).  The single largest performance factor however is the specific manner in which it processes files and performs data clustering, which is extremely efficient.
+The code is SIMD vectorized and multithreaded, which is to say, yes (it does about 1k tiles per second on an i5/i7).  For downsampling, the single largest performance factor however is the specific manner in which it processes files and performs data clustering, which is extremely efficient.
 
 Also, it cheats.
 
 ##It cheats?
 
-Yes.  Instead of the slow approach of creating every zoom level from the highest resolution available, instead it resamples each zoom level iteratively, such that the downscaling is always 2x.  There is additional filtering to prevent this from creating artifacts, so the loss of precision is not significant.
-
-This is important for my own purposes, as the alpha channel had to be perfect after multiple generations of resampling to work with bitstore.js for client-side indexing.
+Yes.  For downsampling, instead of the slow approach of creating every zoom level from the highest resolution available, instead it resamples each zoom level iteratively, such that scaling is always 50%.  There is additional filtering to prevent this from creating artifacts, so the loss of precision is not significant.
 
 ##You said it replaces pngcrush?
 
 In the above workflow, yes.  The PNG writing is highly optimized by default and quite performant.  For example, for the Safecast interpolated tiles, using Apple's ImageIO framework yields a total filesize of 235.8 MB.  This code yields a total filesize of 74.8 MB and runs faster.
-
-##Can it create tiles for a larger zoom level?  That are zoomed in?
-
-Yes, Retile can now create enlarged tiles.  This is a relatively novel implementation of such resampling for GIS, because it primarily uses interpolation from emulators, which is especially suited for pixel art and images of limited color depth.  (Lanczos, etc, is available as well)
 
 ##What else does it do?
 
@@ -85,29 +79,46 @@ Currently, it can rewrite tiles from standard URL templates in three formats and
 
 ##But what about JPEGs?
 
-If you want JPEG support, find a way to bring some variant of libjpeg in, sniff the magic bytes, pass the format through and submit a pull request.  Frankly, I found aggressively optimized PNG always outperformed JPEG, but note I am not using satellite or aerial imagery.
+If you want JPEG support, find a way to bring some variant of libjpeg in, sniff the magic bytes, pass the format through and submit a pull request.  Frankly, I found optimized PNG always outperformed JPEG, but note I am not using satellite or aerial imagery.
+
+##Can it create tiles for a higher zoom level?  That are zoomed in?
+
+Yes, Retile can now create enlarged tiles.  It should be noted that Retile's enlarging is a relatively novel implementation.  For tiles which are not photographic imagery, Retile uses resampling methods from emulators to deliver better results than with traditional resampling methods.  And, for photographic imagery, Lanczos etc remain available.
 
 ##What kind of resampling does it do?
 
 ###### Downsampling
 
-By default when built for OS X, for downsampling it uses Lanczos 3x3 with filtering to control ringing and overshoot / undershoot artifacts.  The core Lanczos resampling is provided by vImage in the Accelerate framework.
+- Default *(OS X)*: Lanczos 3x3 *(filtered for ringing artifacts and undershoot)*
+- Default *(other)*: Average *(custom NODATA handling)*
+- Optional: Lanczos 5x5 *(OS X)*
 
-If the Accelerate framework is not available, for downsampling it falls back upon a modified average algorithm.  The modification being that it will not average pixels whose alpha channel is 0, as this indicates NODATA.
+###### Downsampling: Notes
+
+Downsampling is relatively straightforward and should not require any configuration.  Good results can be obtained with a simple average, and with a little filtering, Lanczos delivers even better results with any kind of source raster.
+
+The output of either Lanczos or average has a "pixel perfect" alpha channel, even with successive generations, and can be used with bitstore.js for client-side indexing.
 
 ###### Enlarging
 
-Enlarging tiles is a different beast altogether.  The problem is that enlarging tiles that are not satellite imagery with traditional techniques yields very poor results.
+- Default: EPX
+- Optional: Lanczos 3x3 *(filtered)* *(OS X)*, Lanczos 5x5 *(filtered)* *(OS X)*, Nearest Neighbor, Bilinear *(filtered)*, Eagle
 
-This is, in fact, the same basic problem emulators have trying to upscale pixel art for much higher-resolution displays.  To that end, Retile by default uses EPX (aka Scale2x) for enlarging tiles.  While Lanczos etc are available as well, the results are relatively disappointing.  (note that Lanczos does quite well downsampling anything, however)
+###### Enlarging: Notes
+
+For tiles that are not photographic imagery, enlarging tiles is quite different from downsampling them, as common resampling techniques produce unexpectedly disappointing results.  This is why EPX is the default method for enlarging tiles.
+
+This is the same basic problem emulators have when trying to upscale pixel art with a limited color palette (eg, Mario).  So, although somewhat unorthodox, it makes sense to leverage emulator resampling algorithms for GIS use here.  What's good for Mario is good for your average non-photographic imagery tile.
 
 More info: https://en.wikipedia.org/wiki/Image_scaling
 
+On the other hand, for satellite or aerial photographic imagery, Lanczos is probably your best bet.  If I included a comparison of the prototypical Lenna image, Lanczos would win.
 
-For satellite or aerial imagery, Lanczos is probably your best bet.  If I included a comparison of the prototypical Lenna image, Lanczos would win.  For non-imagery with a limited color palette?  Well, see below.
+Between EPX and Lanczos you should be able to relatively easily extend any tile set by another few zoom levels, even if traditional GIS resampling methods haven't worked for you in the past here. (of course, rendering higher-resolution data in the first place is preferable)
 
 
-##tl;dr, Resampling Method Comparison
+
+##tl;dr: Resampling Method Comparison
 
 Visual comparison, for enlarging tiles: (click to zoom in)
 
@@ -116,13 +127,10 @@ Visual comparison, for enlarging tiles: (click to zoom in)
  [![overlay_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/overlay_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/overlay_compare_4x.png) | [![gmaps_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/osm_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/osm_compare_4x.png) | [![gmaps_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/gmaps_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/gmaps_compare_4x.png) | [![mario_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/mario_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/mario_compare_4x.png) |
 
 - Nearest neighbor (NN): This provides acceptable results for zooming in by about 2x, but not really beyond that.  While NN never creates artifacts, it is blocky.
-- Lanczos/Cubic: For images with limited color depth, Lanczos and cubic convolution do not handle the underlying rasterized geometry features very well, and in fact draw attention to that with ringing artifacts.  (note: cubic is not currently supported by Retile)
-- EPX (Scale2x): EPX is sort of a specialized variant of NN with edge detection.  It significantly outperforms NN, bilinear, bicubic, and Lanczos for these kinds of rasters.
-- xBRZ: This is not implemented in Retile, and is for comparison purposes.  xBRZ is significantly better than EPX and was the best "pixel art" type resampler I found.  While not especially noticeable on the overlay image, overall it was able to smooth some smaller features that EPX would miss.
+- Lanczos/Bicubic: For images with limited color depth, Lanczos and bicubic do not handle the underlying rasterized geometry features terribly well, and in fact draw attention to that with ringing artifacts.  Bilinear doesn't have the ringing artifacts, but really isn't any better. *(Bicubic not implemented in Retile)*
+- EPX (Scale2x): EPX is sort of a specialized variant of NN with edge detection.  It outperforms traditional resampling techniques on most rasters that are not photographic imagery.
+- xBRZ: xBRZ is similar to, yet significantly better than EPX.  It was the best "pixel art" type resampler I found.  The differences between EPX are subtle on the interpolation sample image, but xBRZ is significantly better on the sample OSM tile. *(xBRZ not implemented in Retile)*
 
-Non-imagery rasters are actually relatively common in GIS.  Pretty much every "standard" or "road" basemap tile falls into this category, as well as tiles such as the first which is a spatial interpolation of gamma radiation dose rate measurements.
-
-At any rate, between EPX and Lanczos you should be able to relatively easily extend any tile set by another few zoom levels, even if traditional GIS resampling methods haven't worked for you in the past here.
 
 
 
@@ -145,9 +153,11 @@ Supported Path "Templates"
 
 It is recommended that OSM paths be used for performance, as placing hundreds of thousands of files in the same directory is often problematic.
 
-Usage Example
-=============
-Assume in the path /tiles, there are map tiles for zoom level 13.  They use OSM convention for naming.  (eg: /tiles/13/6919/3522.png).  You want to create zoom levels 0 - 12, also in OSM format, and don't want to mess with the originals.
+Usage Example: Downsampling
+===========================
+Assume in the path /tiles, there are map tiles for zoom level 13.  They use OSM convention for naming.  (eg: /tiles/13/6919/3522.png).
+
+You want to create zoom levels 0 - 12, also in OSM format, and don't want to mess with the originals.
 
 ```
 Retile /tiles/13 /tiles
@@ -164,6 +174,18 @@ Retile /tiles/3 /tiles
 Retile /tiles/2 /tiles
 Retile /tiles/1 /tiles
 ```
+
+Usage Example: Enlarging
+========================
+Assume in the path /tiles, there are map tiles for zoom level 13.  They use OSM convention for naming.  (eg: /tiles/13/6919/3522.png).
+
+You want users to be able to zoom in further on the map, and want to create zoom levels 14 and 15.
+
+```
+Retile /tiles/13 /tiles -zIn
+Retile /tiles/14 /tiles -zIn
+```
+
 
 Deployment Note
 ===============

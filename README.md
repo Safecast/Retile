@@ -111,12 +111,12 @@ For satellite or aerial imagery, Lanczos is probably your best bet.  If I includ
 
 Visual comparison, for enlarging tiles: (click to zoom in)
 
- GIS Interpolation | Basemap | Emulator (reference) 
- ----------------- | ------- | --------------------
- [![overlay_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/overlay_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/overlay_compare_4x.png) | [![gmaps_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/gmaps_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/gmaps_compare_4x.png) | [![mario_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/mario_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/mario_compare_4x.png) |
+ GIS Interpolation | Basemap | Basemap | Emulator (reference) 
+ ----------------- | ------- | ------- | --------------------
+ [![overlay_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/overlay_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/overlay_compare_4x.png) | [![gmaps_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/osm_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/osm_compare_4x.png) | [![gmaps_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/gmaps_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/gmaps_compare_4x.png) | [![mario_compare_4x](https://github.com/Safecast/Retile/raw/master/sample/mario_compare_4x_thumb.png)](https://github.com/Safecast/Retile/raw/master/sample/mario_compare_4x.png) |
 
 - Nearest neighbor (NN): This provides acceptable results for zooming in by about 2x, but not really beyond that.  While NN never creates artifacts, it is blocky.
-- Cubic convolution (bicubic): While not implemented in Retile, this has the same basic problem as Lanczos (which is) and looks about the same.  For images with limited color depth, the sampling does not handle the underlying rasterized geometry features very well, and in fact draws attention to that with ringing artifacts.
+- Lanczos/Cubic: For images with limited color depth, Lanczos and cubic convolution do not handle the underlying rasterized geometry features very well, and in fact draw attention to that with ringing artifacts.  (note: cubic is not currently supported by Retile)
 - EPX (Scale2x): EPX is sort of a specialized variant of NN with edge detection.  It significantly outperforms NN, bilinear, bicubic, and Lanczos for these kinds of rasters.
 - xBRZ: This is not implemented in Retile, and is for comparison purposes.  xBRZ is significantly better than EPX and was the best "pixel art" type resampler I found.  While not especially noticeable on the overlay image, overall it was able to smooth some smaller features that EPX would miss.
 

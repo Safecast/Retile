@@ -1,11 +1,23 @@
 #include "gbImage_Geometry.h"
 
+#ifndef FORCE_INLINE
+#  ifdef _MSC_VER
+#    define FORCE_INLINE __forceinline
+#  else
+#    ifdef __GNUC__
+#      define FORCE_INLINE inline __attribute__((always_inline))
+#    else
+#      define FORCE_INLINE inline
+#    endif
+#  endif
+#endif
+
 // 2014-08-11 ND: NEON version of this has a bug, use the scalar one for now.
 //                (it only replaces 1 line of scalar code anyway...)
 //
-static inline void _DownsampleRow2x_AlphaBitmask_RGBA8888_NEON(const uint8_t* src,
-                                                               const size_t   src_width,
-                                                               uint8_t*       dest)
+static FORCE_INLINE void _DownsampleRow2x_AlphaBitmask_RGBA8888_NEON(const uint8_t* src,
+                                                                     const size_t   src_width,
+                                                                     uint8_t*       dest)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     size_t       dest_idx   = 0;
@@ -46,9 +58,9 @@ static inline void _DownsampleRow2x_AlphaBitmask_RGBA8888_NEON(const uint8_t* sr
 //
 // bitmask[0].alpha = src[0].alpha == 0 && src[1].alpha == 0 ? 0 : 1
 //
-static inline void _DownsampleRow2x_AlphaBitmask_RGBA8888_scalar(const uint8_t* src,
-                                                                 const size_t   src_width,
-                                                                 uint8_t*       dest)
+static FORCE_INLINE void _DownsampleRow2x_AlphaBitmask_RGBA8888_scalar(const uint8_t* src,
+                                                                       const size_t   src_width,
+                                                                       uint8_t*       dest)
 {
     size_t       dest_idx = 0;
     const size_t Bpp      = 4;
@@ -61,9 +73,9 @@ static inline void _DownsampleRow2x_AlphaBitmask_RGBA8888_scalar(const uint8_t* 
     }//for
 }// _DownsampleRow2x_AlphaBitmask_RGBA8888_scalar
 
-static inline void _DownsampleRow2x_AlphaBitmask_RGBA8888(const uint8_t* src,
-                                                          const size_t   src_width,
-                                                          uint8_t*       dest)
+static FORCE_INLINE void _DownsampleRow2x_AlphaBitmask_RGBA8888(const uint8_t* src,
+                                                                const size_t   src_width,
+                                                                uint8_t*       dest)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     //_DownsampleRow2x_AlphaBitmask_RGBA8888_NEON(src, src_width, dest); // NEON version has bug, use scalar for now
@@ -75,10 +87,10 @@ static inline void _DownsampleRow2x_AlphaBitmask_RGBA8888(const uint8_t* src,
 
 
 
-static inline void _CombineRows_AlphaBitmask_RGBA8888_NEON(const uint8_t* src0,
-                                                           const uint8_t* src1,
-                                                           const size_t   src_width,
-                                                           uint8_t*       dest)
+static FORCE_INLINE void _CombineRows_AlphaBitmask_RGBA8888_NEON(const uint8_t* src0,
+                                                                 const uint8_t* src1,
+                                                                 const size_t   src_width,
+                                                                 uint8_t*       dest)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     uint8x16_t src0_u8x16;
@@ -98,10 +110,10 @@ static inline void _CombineRows_AlphaBitmask_RGBA8888_NEON(const uint8_t* src0,
 }//_CombineRows_AlphaBitmask_RGBA8888_NEON
 
 
-static inline void _CombineRows_AlphaBitmask_RGBA8888_scalar(const uint8_t* src0,
-                                                             const uint8_t* src1,
-                                                             const size_t   src_width,
-                                                             uint8_t*       dest)
+static FORCE_INLINE void _CombineRows_AlphaBitmask_RGBA8888_scalar(const uint8_t* src0,
+                                                                   const uint8_t* src1,
+                                                                   const size_t   src_width,
+                                                                   uint8_t*       dest)
 {
     // no need to examine values -- already 0 or 1 from per-row filter.
     
@@ -130,10 +142,10 @@ static inline void _CombineRows_AlphaBitmask_RGBA8888_scalar(const uint8_t* src0
 //
 // bitmask[0].alpha = src[0].alpha == 0 && src[1].alpha == 0 ? 0 : 1
 //
-static inline void _CombineRows_AlphaBitmask_RGBA8888(const uint8_t* src0,
-                                                      const uint8_t* src1,
-                                                      const size_t   src_width,
-                                                      uint8_t*       dest)
+static FORCE_INLINE void _CombineRows_AlphaBitmask_RGBA8888(const uint8_t* src0,
+                                                            const uint8_t* src1,
+                                                            const size_t   src_width,
+                                                            uint8_t*       dest)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     _CombineRows_AlphaBitmask_RGBA8888_NEON(src0, src1, src_width, dest);
@@ -159,9 +171,9 @@ static inline void _CombineRows_AlphaBitmask_RGBA8888(const uint8_t* src0,
 //      - At least 1 src alpha > 0?
 //      - Then dest alpha must be minimum of 1.
 //
-static inline void _ApplyRowAlphaBitmaskFilter_RGBA8888_scalar(const uint8_t* bitmask,
-                                                               uint8_t*       dest,
-                                                               const size_t   width)
+static FORCE_INLINE void _ApplyRowAlphaBitmaskFilter_RGBA8888_scalar(const uint8_t* bitmask,
+                                                                     uint8_t*       dest,
+                                                                     const size_t   width)
 {
     size_t    mask_x   = 0;
     uint32_t* dest_u32 = (uint32_t*)dest;
@@ -323,9 +335,9 @@ void gbImage_Resize_Half_AlphaBitmask_RGBA8888(const uint8_t*         src,
 //     dest[0].a = 0;
 // }
 //
-static inline void _DownsampleRow2x_NODATA_RGBA8888_scalar(const uint8_t* src,
-                                                           const size_t   src_width,
-                                                           uint8_t*       dest)
+static FORCE_INLINE void _DownsampleRow2x_NODATA_RGBA8888_scalar(const uint8_t* src,
+                                                                 const size_t   src_width,
+                                                                 uint8_t*       dest)
 {
     uint16_t r0_u16;
     uint16_t g0_u16;
@@ -409,10 +421,10 @@ static inline void _DownsampleRow2x_NODATA_RGBA8888_scalar(const uint8_t* src,
 }// _DownsampleRow2x_NODATA_RGBA8888_scalar
 
 
-static inline void _CombineRows_NODATA_RGBA8888_scalar(const uint8_t* src0,
-                                                       const uint8_t* src1,
-                                                       const size_t   src_width,
-                                                       uint8_t*       dest)
+static FORCE_INLINE void _CombineRows_NODATA_RGBA8888_scalar(const uint8_t* src0,
+                                                             const uint8_t* src1,
+                                                             const size_t   src_width,
+                                                             uint8_t*       dest)
 {
     uint16_t r0_u16;
     uint16_t r1_u16;
@@ -822,8 +834,8 @@ void gbImage_Resize_HalfTile_RGBA8888(const uint8_t*      src,
 
 
 
-static inline uint32_t _GetDataCount_RGBA8888_Scalar(const uint32_t* v0,
-                                                     const size_t    n)
+static FORCE_INLINE uint32_t _GetDataCount_RGBA8888_Scalar(const uint32_t* v0,
+                                                           const size_t    n)
 {
     uint32_t _dc = 0;
     uint32_t  _n = (uint32_t)n;
@@ -842,8 +854,8 @@ static inline uint32_t _GetDataCount_RGBA8888_Scalar(const uint32_t* v0,
 }//_GetDataCount_RGBA8888_Scalar
 
 
-static inline uint32_t _GetDataCount_RGBA8888_NEON(const uint32_t* v0,
-                                                   const size_t    n)
+static FORCE_INLINE uint32_t _GetDataCount_RGBA8888_NEON(const uint32_t* v0,
+                                                         const size_t    n)
 {
     uint32_t  _dc          = 0;
     
@@ -879,8 +891,8 @@ static inline uint32_t _GetDataCount_RGBA8888_NEON(const uint32_t* v0,
 
 
 
-static inline uint32_t _GetDataCount_RGBA8888(const uint32_t* v0,
-                                              const size_t    n)
+static FORCE_INLINE uint32_t _GetDataCount_RGBA8888(const uint32_t* v0,
+                                                    const size_t    n)
 {
     uint32_t dc             = 0;
     size_t   lastCleanWidth = n;
@@ -947,6 +959,12 @@ uint32_t gbStats_GetDataCountROI_RGBA8888(const uint32_t* v0,
 bool gbStats_GetHasAnyData_RGBA8888(const uint32_t* v0,
                                     const size_t    n)
 {
+    // speculatively, just check the first pixel.
+    if (v0[0] >> 24 != 0)
+    {
+        return true;
+    }//if
+    
     uint32_t dc        = 0;
     size_t   procWidth = MIN(256, n);
     
@@ -979,6 +997,12 @@ bool gbStats_GetHasAnyDataROI_RGBA8888(const uint32_t* v0,
                                        const size_t    rwx1,
                                        const size_t    rwy1)
 {
+    // speculatively, just check the first pixel.
+    if (v0[0] >> 24 != 0)
+    {
+        return true;
+    }//if
+    
     uint32_t dc        = 0;
     size_t   procWidth = rwx1 - rwx0 + 1;
     size_t   idx;
@@ -1068,9 +1092,9 @@ static inline size_t _GetResampleKernelExtent_ForInterpolationTypeId(const int i
 // Performs:
 //           dest[i] = x;
 //
-static inline void _vfill_u32_NEON(const uint32_t  x,
-                                   uint32_t*       dest,
-                                   const size_t    n)
+static FORCE_INLINE void _vfill_u32_NEON(const uint32_t  x,
+                                         uint32_t*       dest,
+                                         const size_t    n)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     uint32x4_t x_u32x4 = vdupq_n_u32(x);
@@ -1093,9 +1117,9 @@ static inline void _vfill_u32_NEON(const uint32_t  x,
 // Performs:
 //           dest[i] = x;
 //
-static inline void _vfill_u32_scalar(const uint32_t x,
-                                     uint32_t*      dest,
-                                     const size_t   n)
+static FORCE_INLINE void _vfill_u32_scalar(const uint32_t x,
+                                           uint32_t*      dest,
+                                           const size_t   n)
 {
     for (size_t i=0; i<n; i++)
     {
@@ -1114,9 +1138,9 @@ static inline void _vfill_u32_scalar(const uint32_t x,
 // Performs:
 //           dest[i] = x;
 //
-static inline void _vfill_u32(const uint32_t x,
-                              uint32_t*      dest,
-                              const size_t   n)
+static FORCE_INLINE void _vfill_u32(const uint32_t x,
+                                    uint32_t*      dest,
+                                    const size_t   n)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     if (n > 4)
@@ -1259,6 +1283,88 @@ void gbImage_GetZoomedTile_NN_FromCrop_Normal_RGBA8888(const uint8_t* src,
 
 
 
+
+
+
+// do not see how to separate kernel
+static FORCE_INLINE void _EPX_Core_RGBA8888(const uint32_t A,        // ( 0, -1)
+                                            const uint32_t C,        // (-1,  0)
+                                            const uint32_t P,        // ( 0,  0)
+                                            const uint32_t B,        // ( 0, +1)
+                                            const uint32_t D,        // (+1,  0)
+                                            uint32_t*      dest1,
+                                            uint32_t*      dest2,
+                                            uint32_t*      dest3,
+                                            uint32_t*      dest4)
+{
+    if (A != D && C != B)
+    {
+        *dest1 = C == A ? C : P;
+        *dest2 = A == B ? B : P;
+        *dest3 = D == C ? C : P;
+        *dest4 = B == D ? B : P;
+    }//if
+    else
+    {
+        *dest1 = P;
+        *dest2 = P;
+        *dest3 = P;
+        *dest4 = P;
+    }//else
+}//_EPX_Core_RGBA8888
+
+
+static FORCE_INLINE void _EPX_ByRow_RGBA8888(const uint32_t* src0,
+                                             const uint32_t* src1,
+                                             const uint32_t* src2,
+                                             uint32_t*       dest0,
+                                             uint32_t*       dest1,
+                                             const size_t    src_w)
+{
+    size_t  src_x = 0;
+    size_t dest_x = 0;
+    
+    // clamp this to bounds of src, do not assume padding
+    // handle edges out of loop to avoid branching
+    
+    _EPX_Core_RGBA8888(src0[src_x],
+                       src1[src_x],     // normally -1
+                       src1[src_x],
+                       src1[src_x+1],
+                       src2[src_x],
+                       &dest0[dest_x],
+                       &dest0[dest_x+1],
+                       &dest1[dest_x],
+                       &dest1[dest_x+1]);
+    dest_x += 2;
+    
+    for (src_x=1; src_x < src_w - 1; src_x++)
+    {
+        _EPX_Core_RGBA8888(src0[src_x],
+                           src1[src_x-1],
+                           src1[src_x],
+                           src1[src_x+1],
+                           src2[src_x],
+                           &dest0[dest_x],
+                           &dest0[dest_x+1],
+                           &dest1[dest_x],
+                           &dest1[dest_x+1]);
+        dest_x += 2;
+    }//for
+    
+    _EPX_Core_RGBA8888(src0[src_x],
+                       src1[src_x-1],
+                       src1[src_x],
+                       src1[src_x],     // normally +1
+                       src2[src_x],
+                       &dest0[dest_x],
+                       &dest0[dest_x+1],
+                       &dest1[dest_x],
+                       &dest1[dest_x+1]);
+}//_EPX_ByRow_RGBA8888
+
+
+
 // ===============================================
 // gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888:
 // ===============================================
@@ -1272,6 +1378,85 @@ void gbImage_GetZoomedTile_NN_FromCrop_Normal_RGBA8888(const uint8_t* src,
 // http://www.mactech.com/articles/mactech/Vol.15/15.06/FastBlitStrategies/index.html
 //
 void gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888(const uint8_t* src,
+                                                    const size_t   src_w,
+                                                    const size_t   src_h,
+                                                    const size_t   src_rb,
+                                                    uint8_t*       dest,
+                                                    const size_t   dest_w,
+                                                    const size_t   dest_h,
+                                                    const size_t   dest_rb)
+{
+    uint32_t*  src_u32 = (uint32_t*)src;
+    uint32_t* dest_u32 = (uint32_t*)dest;
+    
+    const size_t  srcProcWidth =  src_rb / 4;
+    const size_t destProcWidth = dest_rb / 4;
+    
+    size_t  srcY;
+    size_t destY = 0;
+    
+    size_t  src0_idx;   // y-1
+    size_t  src1_idx;   // y
+    size_t  src2_idx;   // y+1
+    size_t dest0_idx;   // y
+    size_t dest1_idx;   // y+1
+    
+    // clamp this to bounds of src, do not assume padding
+    // handle edges out of loop to avoid branching
+    
+    // <Row_0>
+    _EPX_ByRow_RGBA8888(src_u32,
+                        src_u32,
+                        src_u32  +  srcProcWidth,
+                        dest_u32,
+                        dest_u32 + destProcWidth,
+                        src_w);
+    destY += 2;
+    // </Row_0>
+    
+    
+    // <Row_1...n-1>
+    for (srcY = 1; srcY < src_h - 1; srcY++)
+    {
+        src0_idx  =  (srcY-1) *  srcProcWidth;
+        src1_idx  =   srcY    *  srcProcWidth;
+        src2_idx  =  (srcY+1) *  srcProcWidth;
+        dest0_idx =  destY    * destProcWidth;
+        dest1_idx = (destY+1) * destProcWidth;
+        
+        _EPX_ByRow_RGBA8888(src_u32  +  src0_idx,
+                            src_u32  +  src1_idx,
+                            src_u32  +  src2_idx,
+                            dest_u32 + dest0_idx,
+                            dest_u32 + dest1_idx,
+                            src_w);
+        destY += 2;
+    }//for
+    // </Row_1...n-1>
+    
+    
+    // <Row_n>
+    src0_idx  = ( srcY-1) *  srcProcWidth;
+    src1_idx  =   srcY    *  srcProcWidth;
+    src2_idx  =   srcY    *  srcProcWidth;
+    dest0_idx =  destY    * destProcWidth;
+    dest1_idx = (destY+1) * destProcWidth;
+
+    _EPX_ByRow_RGBA8888(src_u32  +  src0_idx,
+                        src_u32  +  src1_idx,
+                        src_u32  +  src2_idx,
+                        dest_u32 + dest0_idx,
+                        dest_u32 + dest1_idx,
+                        src_w);
+    // </Row_n>
+}//gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888
+
+
+
+
+
+/*
+void OLD_gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888(const uint8_t* src,
                                                     const size_t   src_w,
                                                     const size_t   src_h,
                                                     const size_t   src_rb,
@@ -1356,8 +1541,8 @@ void gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888(const uint8_t* src,
         
         srcY++;
     }//for
-}//gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888
-
+}//OLD_gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888
+*/
 
 
 
@@ -1445,9 +1630,9 @@ void gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888(const uint8_t* src,
             idx_H = idx_D + (x + 1 < src_w ? 1 : 0);
             
             idx_1 = destY_destProcWidth + x * zoomScaleX;                                       // ( 0,  0)
-            idx_2 = idx_1 + (x + 1 < dest_w ? 1 : 0);                                    // ( 0, +1)
+            idx_2 = idx_1 + (x + 1 < dest_w ? 1 : 0);                                           // ( 0, +1)
             idx_3 = (destY + (destY + 1 < dest_h ? 1 : 0)) * destProcWidth + x * zoomScaleX;    // (+1,  0)
-            idx_4 = idx_3 + (x + 1 < dest_w ? 1 : 0);                                    // (+1, +1)
+            idx_4 = idx_3 + (x + 1 < dest_w ? 1 : 0);                                           // (+1, +1)
             
             // order by mem order
             
@@ -1579,11 +1764,11 @@ void gbImage_ExtendEdgesRightAndDownOnly_RGBA8888(uint8_t*     src,
 //
 // Lazy way of extracting each channel of a 32-bit interleaved pixel.
 //
-static inline void _RGBA8888_to_R8_G8_B8_A8(const uint32_t rgba,
-                                            uint8_t*       r,
-                                            uint8_t*       g,
-                                            uint8_t*       b,
-                                            uint8_t*       a)
+static FORCE_INLINE void _RGBA8888_to_R8_G8_B8_A8(const uint32_t rgba,
+                                                  uint8_t*       r,
+                                                  uint8_t*       g,
+                                                  uint8_t*       b,
+                                                  uint8_t*       a)
 {
     *r = (rgba & 0x000000FF);
     *g = (rgba & 0x0000FF00) >> 8;
@@ -1600,12 +1785,12 @@ static inline void _RGBA8888_to_R8_G8_B8_A8(const uint32_t rgba,
 // This accumulates pixel values for later calculating the mean for each
 // channel.
 //
-static inline void _AccumulateRGBA8888_ToChSums(const uint32_t rgba,
-                                                double*        r_sum,
-                                                double*        g_sum,
-                                                double*        b_sum,
-                                                double*        a_sum,
-                                                double*        rgba_n)
+static FORCE_INLINE void _AccumulateRGBA8888_ToChSums(const uint32_t rgba,
+                                                      double*        r_sum,
+                                                      double*        g_sum,
+                                                      double*        b_sum,
+                                                      double*        a_sum,
+                                                      double*        rgba_n)
 {
     uint8_t r_u08;
     uint8_t g_u08;
@@ -1631,11 +1816,11 @@ static inline void _AccumulateRGBA8888_ToChSums(const uint32_t rgba,
 // After the pixel values for a cell neighborhood have been accumulated, this
 // returns a single interleaved pixel value representing their mean.
 //
-static inline uint32_t _GetRGBA8888_ForChSums(double r_sum,
-                                              double g_sum,
-                                              double b_sum,
-                                              double a_sum,
-                                              double rgba_n)
+static FORCE_INLINE uint32_t _GetRGBA8888_ForChSums(double r_sum,
+                                                    double g_sum,
+                                                    double b_sum,
+                                                    double a_sum,
+                                                    double rgba_n)
 {
     uint8_t r = r_sum / rgba_n + 0.5;
     uint8_t g = g_sum / rgba_n + 0.5;
@@ -1955,10 +2140,10 @@ static inline void _CopyByRow_RGBA8888(const uint8_t*  src,
 // Performs:
 //           dest[i] = src0[i] & src1[i];
 //
-static inline void _vand_u32_NEON(const uint32_t* src0,
-                                  const uint32_t* src1,
-                                  uint32_t*       dest,
-                                  const size_t    n)
+static FORCE_INLINE void _vand_u32_NEON(const uint32_t* src0,
+                                        const uint32_t* src1,
+                                        uint32_t*       dest,
+                                        const size_t    n)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     uint32x4_t src0_u32x4;
@@ -1985,10 +2170,10 @@ static inline void _vand_u32_NEON(const uint32_t* src0,
 // Performs:
 //           dest[i] = src0[i] & src1[i];
 //
-static inline void _vand_u32_scalar(const uint32_t* src0,
-                                    const uint32_t* src1,
-                                    uint32_t*       dest,
-                                    const size_t    n)
+static FORCE_INLINE void _vand_u32_scalar(const uint32_t* src0,
+                                          const uint32_t* src1,
+                                          uint32_t*       dest,
+                                          const size_t    n)
 {
     for (size_t i=0; i<n; i++)
     {
@@ -2005,10 +2190,10 @@ static inline void _vand_u32_scalar(const uint32_t* src0,
 // Performs:
 //           dest[i] = src0[i] & src1[i];
 //
-static inline void _vand_u32(const uint32_t* src0,
-                             const uint32_t* src1,
-                             uint32_t*       dest,
-                             const size_t    n)
+static FORCE_INLINE void _vand_u32(const uint32_t* src0,
+                                   const uint32_t* src1,
+                                   uint32_t*       dest,
+                                   const size_t    n)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     if (n > 4)

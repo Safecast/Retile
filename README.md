@@ -215,6 +215,10 @@ About/Licensing
 ===============
 Created by Nick Dolezal. This code is released into the public domain.  (or CC0 if you like)
 
+Data Processing Model
+=====================
+![Retile_Conceptual](https://github.com/Safecast/Retile/raw/master/sample/Retile_Conceptual.png)
+
 Porting Considerations
 ======================
 See comments at the top of main.c.  Retile has only been tested and run on OS X 10.9 and 10.10.  It is likely porting it to *nix/BSD would mostly be a matter of creating a makefile and commenting out the Apple framework includes.  As noted in main.c, Windows will require replacing the posix function calls, most notably mkdir.

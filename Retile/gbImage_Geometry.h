@@ -13,7 +13,7 @@
 #if defined (__cplusplus)
 extern "C" {
 #endif
-
+    
 typedef int GB_Image_InterpolationType; enum
 {
     kGB_Image_Interp_NN         = 0,
@@ -22,7 +22,8 @@ typedef int GB_Image_InterpolationType; enum
     kGB_Image_Interp_Lanczos5x5 = 3,
     kGB_Image_Interp_Average    = 4,
     kGB_Image_Interp_EPX        = 5,
-    kGB_Image_Interp_Eagle      = 6
+    kGB_Image_Interp_Eagle      = 6,
+    kGB_Image_Interp_XBR        = 7
 };
 
 void gbImage_Resize_HalfTile_RGBA8888(const uint8_t* src,
@@ -88,7 +89,7 @@ void gbImage_Resize_Bilinear_RGBA8888(const uint8_t* src,
                                       const size_t   src_h,
                                       const size_t   dest_w,
                                       const size_t   dest_h);
-
+    
 void gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888(const uint8_t* src,
                                                     const size_t   src_w,
                                                     const size_t   src_h,
@@ -116,21 +117,27 @@ void gbImage_GetZoomedTile_NN_FromCrop_Normal_RGBA8888(const uint8_t* src,
                                                        const size_t   dest_h,
                                                        const size_t   dest_rb);
     
-    void gbImage_Resize_EnlargeTile_NN_RGBA8888(const uint8_t* src,
-                                                uint8_t*       dest,
-                                                const uint32_t src_z,
-                                                const uint32_t dest_x,
-                                                const uint32_t dest_y,
-                                                const uint32_t dest_z,
-                                                const size_t   w,
-                                                const size_t   h,
-                                                const int      interpolationTypeId,
-                                                bool*          roiWasEmpty);
+void gbImage_Resize_EnlargeTile_NN_RGBA8888(const uint8_t* src,
+                                            uint8_t*       dest,
+                                            const uint32_t src_z,
+                                            const uint32_t dest_x,
+                                            const uint32_t dest_y,
+                                            const uint32_t dest_z,
+                                            const size_t   w,
+                                            const size_t   h,
+                                            const int      interpolationTypeId,
+                                            bool*          roiWasEmpty);
 
-// HQ2x scaler code, attempted port from C++, this was undocumented and didn't work.
-//void filter_size(unsigned* width, unsigned* height);
-//void filter_render(uint32_t* colortable, uint32_t* output, unsigned outpitch, const uint16_t* input, unsigned pitch, unsigned width, unsigned height);
-    
+void gbImage_GetZoomedTile_NN_FromCrop_XBR_RGBA8888(const uint8_t* src,
+                                                    const size_t   src_w,
+                                                    const size_t   src_h,
+                                                    const size_t   src_rb,
+                                                    uint8_t*       dest,
+                                                    const size_t   dest_w,
+                                                    const size_t   dest_h,
+                                                    const size_t   dest_rb);
+
+
 #if defined (__cplusplus)
 }
 #endif

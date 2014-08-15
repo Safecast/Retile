@@ -1940,7 +1940,7 @@ static inline void _ReprocessTiles(const char* srcPath,
 //
 // Requires Posix.
 //
-int64_t CURRENT_TIMESTAMP()
+static inline int64_t CURRENT_TIMESTAMP()
 {
     struct timeval te;
     int64_t        ms;
@@ -1951,6 +1951,25 @@ int64_t CURRENT_TIMESTAMP()
     
     return ms;
 }//CURRENT_TIMESTAMP
+
+
+static inline double CURRENT_TIMESTAMP_SS_D()
+{
+    struct timeval te;
+    //int64_t        ms;
+    
+    gettimeofday(&te, NULL);
+    
+    double ss = te.tv_sec;
+    double us = te.tv_usec;
+    us /= 1000.0;
+    us /= 1000.0;
+    
+    ss += us;
+    
+    return ss;
+}//CURRENT_TIMESTAMP_SS_D
+
 
 
 
@@ -2000,7 +2019,8 @@ static inline void _IterativeRetile(const char* dbFilePath,
 // these are lazy / test functions.
 
 static inline void _ProductionNoParamRun(const char* dbFilePath, const bool alsoReprocessSrc, const int interpolationTypeId)
-{    
+{
+    /*
     char* rootPath = "/Library/WebServer/Documents/tilemap/TileGriddata/";
     
     _IterativeRetile(dbFilePath, rootPath, 0, 12, kRetile_Template_XYZ, kRetile_Template_XYZ, alsoReprocessSrc, interpolationTypeId);
@@ -2012,7 +2032,7 @@ static inline void _ProductionNoParamRun(const char* dbFilePath, const bool also
     
     if (n > 0)
     {
-        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_XYZ, alsoReprocessSrc, kGB_Image_Interp_EPX, 1);
+        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_XYZ, alsoReprocessSrc, kGB_Image_Interp_XBR, 1);
     }//if
     
     
@@ -2021,21 +2041,22 @@ static inline void _ProductionNoParamRun(const char* dbFilePath, const bool also
     
     if (n > 0)
     {
-        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_XYZ, alsoReprocessSrc, kGB_Image_Interp_EPX, 1);
+        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_XYZ, alsoReprocessSrc, kGB_Image_Interp_XBR, 1);
     }//if
+    */
     
-    //printf("Prod bypass disabled for test.  Abort.\n");
+    printf("Prod bypass disabled.  Abort.\n");
 }//_ProductionNoParamRun
 
 
 static inline void _LocalTestRun(const char* dbFilePath, const bool alsoReprocessSrc, const int interpolationTypeId)
 {
+    // === tile pyramid testing ===
     
+    //char* rootPath = "/Users/ndolezal/Downloads/TileGriddata/";
+    
+    //_IterativeRetile(dbFilePath, rootPath, 0, 12, kRetile_Template_OSM, kRetile_Template_OSM, alsoReprocessSrc, interpolationTypeId);
     /*
-    char* rootPath = "/Users/ndolezal/Downloads/TileGriddata/";
-    
-    _IterativeRetile(dbFilePath, rootPath, 0, 12, kRetile_Template_OSM, kRetile_Template_OSM, alsoReprocessSrc, interpolationTypeId);
-    
     char* src  = "/Users/ndolezal/Downloads/TileGriddata/13";
     char* dest = "/Users/ndolezal/Downloads/TileGriddata";
     
@@ -2043,25 +2064,30 @@ static inline void _LocalTestRun(const char* dbFilePath, const bool alsoReproces
     
     if (n > 0)
     {
-        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_OSM, alsoReprocessSrc, kGB_Image_Interp_EPX, 1);
+        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_OSM, alsoReprocessSrc, kGB_Image_Interp_XBR, 1);
     }//if
-    
+    */
+    /*
     src = "/Users/ndolezal/Downloads/TileGriddata/14";
     n   = _ReadPathToDB(src, dbFilePath, kRetile_Template_OSM);
     
     if (n > 0)
     {
-        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_OSM, alsoReprocessSrc, kGB_Image_Interp_EPX, 1);
+        _QueueEnlargeFromDB(dest, dbFilePath, kRetile_Template_OSM, alsoReprocessSrc, kGB_Image_Interp_XBR, 1);
     }//if
     */
     
+    
     /*
+    // === resampling performance / output testing ===
     uint32_t* src = NULL;
     size_t src_w;
     size_t src_h;
     size_t src_rb;
     
-    gbImage_PNG_Read_RGBA8888("/Users/ndolezal/Downloads/lenna.png", &src, &src_w, &src_h, &src_rb);
+    uint32_t worthless_accumulator = 0;
+    
+    gbImage_PNG_Read_RGBA8888("/Users/ndolezal/Downloads/3213.png", &src, &src_w, &src_h, &src_rb);
     
     size_t dest_w  = src_w  * 2;
     size_t dest_h  = src_h  * 2;
@@ -2069,18 +2095,57 @@ static inline void _LocalTestRun(const char* dbFilePath, const bool alsoReproces
     
     uint32_t* dest = malloc(sizeof(uint32_t) * dest_w * dest_h);
     
+    double st;
+    double et = 0.0;
     
-    //gbImage_Resize_vImage_Lanczos5x5_RGBA8888((uint8_t*)src, (uint8_t*)dest, src_w, src_h, src_rb, dest_w, dest_h, dest_rb);
-    gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888((uint8_t*)src, src_w, src_h, src_rb, (uint8_t*)dest, dest_w, dest_h, dest_rb);
-    //gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888((uint8_t*)src, src_w, src_h, src_rb, (uint8_t*)dest, dest_w, dest_h, dest_rb);
+    for (size_t i=0; i<1; i++)
+    {
+        st = CURRENT_TIMESTAMP_SS_D();
+        
+        gbImage_GetZoomedTile_NN_FromCrop_XBR_RGBA8888((uint8_t*)src, src_w, src_h, src_rb, (uint8_t*)dest, dest_w, dest_h, dest_rb);
+        //gbImage_Resize_vImage_Lanczos5x5_RGBA8888((uint8_t*)src, (uint8_t*)dest, src_w, src_h, src_rb, dest_w, dest_h, dest_rb);
+        //gbImage_Resize_Bilinear_RGBA8888((uint8_t*)src, (uint8_t*)dest, src_w, src_h, dest_w, dest_h);
+        
+        et += CURRENT_TIMESTAMP_SS_D() * 1000.0 - st * 1000.0; //ms
+        
+        worthless_accumulator += dest[i] == 0 ? 0 : 1;
+        
+        src[i] = 0;
+    }//for
     
-    gbImage_PNG_Write_RGBA8888("/Users/ndolezal/Downloads/lenna_epx2x.png", dest_w, dest_h, (uint8_t*)dest);
+    
+    st = CURRENT_TIMESTAMP_SS_D();
+    
+    //printf("Test: %1.8f ms\n", CURRENT_TIMESTAMP_SS_D() * 1000.0 - st * 1000.0);
+    
+    gbImage_PNG_Write_RGBA8888("/Users/ndolezal/Downloads/3213_xbr2x.png", dest_w, dest_h, (uint8_t*)dest);
+    
+    printf("Total elapsed: %1.8f ms.  wa=%zu.\n", et, (size_t)worthless_accumulator);
+    
+    free(dest);
     
     free(src);
-    free(dest);
+    
+    // jordan.png, 1900x1200, 2.1 MB, vImage multithreaded (others not), 2x enlarge:
+    
+    // Runs  Name       Computation Time
+    // ===== ========== ==================
+    // x1,     New EPX:     26.59392357 ms
+    // x1,     Old EPX:     36.29899025 ms
+    
+    // x256,        NN:   1653.68509293 ms
+    // x256,   new EPX:   2140.11383057 ms
+    // x256,   mmx EPX:   2649.15442467 ms  <(mmx code from Scale2x project)
+    // x256,   old EPX:   4082.48662949 ms
+    // x256, old Eagle:   4630.11598587 ms
+    // x256,        L3:   4528.46741676 ms
+    // x256,        L5:   5457.26490021 ms
+    // x256,  biScalar:  19355.07297516 ms
+    // x256,   yuv xbr: 142968.45245361 ms
+    // x256,   rgb xbr:  84664.65854645 ms
     */
     
-    printf("Local bypass disabled for test.  Abort.\n");
+    printf("Local bypass disabled.  Abort.\n");
 }//_LocalTestRun
 
 
@@ -2133,8 +2198,8 @@ int main(int argc, const char * argv[])
 
     // lazy overrides
     const bool  LOCAL_NO_PARAM_BYPASS = false;
-    const bool  PROD_NO_PARAM_BYPASS  = true;  // overrides local no param bypass
-    const bool  REPROC_SRC_BYPASS     = true;  // crushes src in-place for no param modes
+    const bool  PROD_NO_PARAM_BYPASS  = false;  // overrides local no param bypass
+    const bool  REPROC_SRC_BYPASS     = false;  // crushes src in-place for no param modes
     
     
     // stuff the user types in
@@ -2219,6 +2284,10 @@ int main(int argc, const char * argv[])
         {
             interpolationTypeId = kGB_Image_Interp_Average;
         }//else if
+        else if (strncmp(argv[i], "-interpXB", 9) == 0)
+        {
+            interpolationTypeId = kGB_Image_Interp_XBR;
+        }//else if
     }//for
     
     // set interp default for op mode
@@ -2239,6 +2308,7 @@ int main(int argc, const char * argv[])
                              : interpolationTypeId == kGB_Image_Interp_EPX        ? "EX"
                              : interpolationTypeId == kGB_Image_Interp_Lanczos3x3 ? "L3"
                              : interpolationTypeId == kGB_Image_Interp_Lanczos5x5 ? "L5"
+                             : interpolationTypeId == kGB_Image_Interp_XBR        ? "XB"
                              :                                                      "NN");
     printf("-zdir:      %s\n", opMode == kRetile_OpMode_Downsample ? "Out" : "In");
     
@@ -2268,9 +2338,10 @@ int main(int argc, const char * argv[])
         printf("            Default is [-outOSM].\n");
         printf("\n");
         printf("<interp>:   Optional.  Interpolation type, one of:\n");
-        printf("            Zoom In:  { -interpEX, -interpL3, -interpL5, -interpNN, -interpBI }\n");
-        printf("            Zoom Out: { -interpAV, -interpL3, -interpL5                       }\n");
-        printf("            Default is [-interpEX] (in) and [-interpL3] (out).\n");
+        printf("            Zoom In:  { -interpXB, -interpL3, -interpL5, -interpNN, -interpBI, \n");
+        printf("                        -interpEA, -interpEX }\n");
+        printf("            Zoom Out: { -interpAV, -interpL3, -interpL5 }\n");
+        printf("            Default is [-interpXB] (in) and [-interpL3] (out).\n");
         printf("\n");
         printf("<zdir>:     Optional. Direction of zoom, one of: { -zIn, -zOut }.\n");
         printf("            [-zOut] creates tiles for zoom level -1, downsampling them.\n");
@@ -2289,11 +2360,14 @@ int main(int argc, const char * argv[])
         printf("-interpBI: Bilinear\n");
         printf("-interpL3: Lanczos 3x3*                 (*only on OS X)\n");
         printf("-interpL5: Lanczos 5x5*                 (*only on OS X)\n");
-        printf("-interpEX: EPX                          (enlarge only)\n");
+        printf("-interpEX: EPX                          (enlarge 2x only)\n");
+        printf("-interpEA: Eagle                        (enlarge 2x only)\n");
+        printf("-interpXB: XBR                          (enlarge 2x only)\n");
         printf("-interpAV: Average                      (downsample only)\n");
+        
         printf("\n");
-        printf("EPX aka Scale2x is an edge-detecting variant of NN for resizing pixel art\n");
-        printf("and images of limited color depth.  It is significantly superior for those\n");
+        printf("EPX, Eagle and XBR are edge-detecting variants of NN for resizing pixel\n");
+        printf("art and images of limited color depth.  They are superior for those\n");
         printf("cases, but Lanczos is preferable for photographic imagery.\n");
         printf("\n");
         printf("(Only tested with 256x256 tiles.  Google Maps y-axis convention only.)\n");

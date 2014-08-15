@@ -73,9 +73,9 @@ static FORCE_INLINE void _DownsampleRow2x_AlphaBitmask_RGBA8888_scalar(const uin
     }//for
 }// _DownsampleRow2x_AlphaBitmask_RGBA8888_scalar
 
-static FORCE_INLINE void _DownsampleRow2x_AlphaBitmask_RGBA8888(const uint8_t* src,
-                                                                const size_t   src_width,
-                                                                uint8_t*       dest)
+static inline void _DownsampleRow2x_AlphaBitmask_RGBA8888(const uint8_t* src,
+                                                          const size_t   src_width,
+                                                          uint8_t*       dest)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     //_DownsampleRow2x_AlphaBitmask_RGBA8888_NEON(src, src_width, dest); // NEON version has bug, use scalar for now
@@ -142,10 +142,10 @@ static FORCE_INLINE void _CombineRows_AlphaBitmask_RGBA8888_scalar(const uint8_t
 //
 // bitmask[0].alpha = src[0].alpha == 0 && src[1].alpha == 0 ? 0 : 1
 //
-static FORCE_INLINE void _CombineRows_AlphaBitmask_RGBA8888(const uint8_t* src0,
-                                                            const uint8_t* src1,
-                                                            const size_t   src_width,
-                                                            uint8_t*       dest)
+static inline void _CombineRows_AlphaBitmask_RGBA8888(const uint8_t* src0,
+                                                      const uint8_t* src1,
+                                                      const size_t   src_width,
+                                                      uint8_t*       dest)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     _CombineRows_AlphaBitmask_RGBA8888_NEON(src0, src1, src_width, dest);
@@ -171,9 +171,9 @@ static FORCE_INLINE void _CombineRows_AlphaBitmask_RGBA8888(const uint8_t* src0,
 //      - At least 1 src alpha > 0?
 //      - Then dest alpha must be minimum of 1.
 //
-static FORCE_INLINE void _ApplyRowAlphaBitmaskFilter_RGBA8888_scalar(const uint8_t* bitmask,
-                                                                     uint8_t*       dest,
-                                                                     const size_t   width)
+static inline void _ApplyRowAlphaBitmaskFilter_RGBA8888_scalar(const uint8_t* bitmask,
+                                                               uint8_t*       dest,
+                                                               const size_t   width)
 {
     size_t    mask_x   = 0;
     uint32_t* dest_u32 = (uint32_t*)dest;
@@ -335,9 +335,9 @@ void gbImage_Resize_Half_AlphaBitmask_RGBA8888(const uint8_t*         src,
 //     dest[0].a = 0;
 // }
 //
-static FORCE_INLINE void _DownsampleRow2x_NODATA_RGBA8888_scalar(const uint8_t* src,
-                                                                 const size_t   src_width,
-                                                                 uint8_t*       dest)
+static inline void _DownsampleRow2x_NODATA_RGBA8888_scalar(const uint8_t* src,
+                                                           const size_t   src_width,
+                                                           uint8_t*       dest)
 {
     uint16_t r0_u16;
     uint16_t g0_u16;
@@ -421,10 +421,10 @@ static FORCE_INLINE void _DownsampleRow2x_NODATA_RGBA8888_scalar(const uint8_t* 
 }// _DownsampleRow2x_NODATA_RGBA8888_scalar
 
 
-static FORCE_INLINE void _CombineRows_NODATA_RGBA8888_scalar(const uint8_t* src0,
-                                                             const uint8_t* src1,
-                                                             const size_t   src_width,
-                                                             uint8_t*       dest)
+static inline void _CombineRows_NODATA_RGBA8888_scalar(const uint8_t* src0,
+                                                       const uint8_t* src1,
+                                                       const size_t   src_width,
+                                                       uint8_t*       dest)
 {
     uint16_t r0_u16;
     uint16_t r1_u16;
@@ -831,11 +831,16 @@ void gbImage_Resize_HalfTile_RGBA8888(const uint8_t*      src,
 
 
 
-
-
-
-static FORCE_INLINE uint32_t _GetDataCount_RGBA8888_Scalar(const uint32_t* v0,
-                                                           const size_t    n)
+// =============================
+// _GetDataCount_RGBA8888_Scalar
+// =============================
+//
+// Returns the count of non-zero alpha values in n elements for vector v0.
+//
+// Scalar version.
+//
+static inline uint32_t _GetDataCount_RGBA8888_Scalar(const uint32_t* v0,
+                                                     const size_t    n)
 {
     uint32_t _dc = 0;
     uint32_t  _n = (uint32_t)n;
@@ -853,9 +858,24 @@ static FORCE_INLINE uint32_t _GetDataCount_RGBA8888_Scalar(const uint32_t* v0,
     return _dc;
 }//_GetDataCount_RGBA8888_Scalar
 
-
-static FORCE_INLINE uint32_t _GetDataCount_RGBA8888_NEON(const uint32_t* v0,
-                                                         const size_t    n)
+// ===========================
+// _GetDataCount_RGBA8888_NEON
+// ===========================
+//
+// Returns the count of non-zero alpha values in n elements for vector v0.
+//
+// NEON SIMD version, works with SSE via NEONvsSSE_5.h.
+//
+// Signed integer SIMD vectors are used here instead of unsigned for two
+// reasons:
+//
+// 1. SSE intrinsics don't support unsigned integers particularly well.
+// 2. For determining a count of something based off a compare-equality intrin
+//    of some type, a 32-bit return value of all bits set is -1, which requires
+//    no further ops to accumulate.
+//
+static inline uint32_t _GetDataCount_RGBA8888_NEON(const uint32_t* v0,
+                                                   const size_t    n)
 {
     uint32_t  _dc          = 0;
     
@@ -890,9 +910,14 @@ static FORCE_INLINE uint32_t _GetDataCount_RGBA8888_NEON(const uint32_t* v0,
 }//_GetDataCount_RGBA8888_NEON
 
 
-
-static FORCE_INLINE uint32_t _GetDataCount_RGBA8888(const uint32_t* v0,
-                                                    const size_t    n)
+// =======================
+// _GetDataCount_RGBA8888:
+// =======================
+//
+// Returns the count of non-zero alpha values in n elements for vector v0.
+//
+static inline uint32_t _GetDataCount_RGBA8888(const uint32_t* v0,
+                                              const size_t    n)
 {
     uint32_t dc             = 0;
     size_t   lastCleanWidth = n;
@@ -928,12 +953,27 @@ static FORCE_INLINE uint32_t _GetDataCount_RGBA8888(const uint32_t* v0,
     return dc;
 }//_GetDataCount
 
+// ==============================
+// gbStats_GetDataCount_RGBA8888:
+// ==============================
+//
+// Returns the count of non-zero alpha values in n elements for vector v0.
+//
+// Extern wrapper.
+//
 uint32_t gbStats_GetDataCount_RGBA8888(const uint32_t* v0,
                                        const size_t    n)
 {
     return _GetDataCount_RGBA8888(v0, n);
 }//_gbStats_GetDataCount_RGBA8888
 
+// =================================
+// gbStats_GetDataCountROI_RGBA8888:
+// =================================
+//
+// Returns the count of non-zero alpha values in a region of interest
+// (rwx0, rwy0) - (rwx1, rwy1) in vector v0, where width equals rowBytes/4.
+//
 uint32_t gbStats_GetDataCountROI_RGBA8888(const uint32_t* v0,
                                           const size_t    width,
                                           const size_t    rwx0,
@@ -956,6 +996,18 @@ uint32_t gbStats_GetDataCountROI_RGBA8888(const uint32_t* v0,
     return dc;
 }//gbStats_GetDataCountROI_RGBA8888
 
+// ===============================
+// gbStats_GetHasAnyData_RGBA8888:
+// ===============================
+//
+// Non-zero alpha value search for n elements in vector v0.
+//
+// Note a block size of 256 elements is used (n>256) if the first alpha value
+// did not disprove the hypothesis.
+//
+// This is used to determine if processing on a zoomed crop of an image
+// should proceed, as not all ROIs contain visible pixels.
+//
 bool gbStats_GetHasAnyData_RGBA8888(const uint32_t* v0,
                                     const size_t    n)
 {
@@ -990,6 +1042,19 @@ bool gbStats_GetHasAnyData_RGBA8888(const uint32_t* v0,
     return dc > 0;
 }//gbStats_GetHasAnyData_RGBA8888
 
+// ==================================
+// gbStats_GetHasAnyDataROI_RGBA8888:
+// ==================================
+//
+// Non-zero alpha value search for a region of interest (rwx0, rwy0)
+// - (rwx1, rwy1) in vector v0, where width equals rowBytes/4.
+//
+// Note a block size of the ROI's width is used if the first alpha value
+// did not disprove the hypothesis.
+//
+// This is used to determine if processing on a zoomed region of an image
+// should proceed, as not all ROIs contain visible pixels.
+//
 bool gbStats_GetHasAnyDataROI_RGBA8888(const uint32_t* v0,
                                        const size_t    width,
                                        const size_t    rwx0,
@@ -1063,13 +1128,16 @@ static inline size_t _GetResampleKernelExtent_ForInterpolationTypeId(const int i
             extent = 1;
             break;
         case kGB_Image_Interp_EPX:
-            extent = 1; // not really, but...
+            extent = 3; // not really, but...
             break;
         case kGB_Image_Interp_Eagle:
-            extent = 1; // not really, but...
+            extent = 3; // not really, but...
             break;
         case kGB_Image_Interp_Average:
-            extent = 1; // not really, but...
+            extent = 2; // not really, but...
+            break;
+        case kGB_Image_Interp_XBR:
+            extent = 5; // not really, but...
             break;
     }//switch
     
@@ -1138,9 +1206,9 @@ static FORCE_INLINE void _vfill_u32_scalar(const uint32_t x,
 // Performs:
 //           dest[i] = x;
 //
-static FORCE_INLINE void _vfill_u32(const uint32_t x,
-                                    uint32_t*      dest,
-                                    const size_t   n)
+static inline void _vfill_u32(const uint32_t x,
+                              uint32_t*      dest,
+                              const size_t   n)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     if (n > 4)
@@ -1245,38 +1313,25 @@ void gbImage_GetZoomedTile_NN_FromCrop_Normal_RGBA8888(const uint8_t* src,
 {
     uint32_t*  src_u32 = (uint32_t*)src;
     uint32_t* dest_u32 = (uint32_t*)dest;
-    
     const size_t zoomScaleX    = MAX(dest_w / src_w, 1);
     const size_t zoomScaleY    = MAX(dest_h / src_h, 1);
     const size_t srcProcWidth  = src_rb  / 4;
     const size_t destProcWidth = dest_rb / 4;
-    
     size_t srcY = 0;
-    size_t destY;
-    size_t x;
-    size_t srcY_srcProcWidth;
-    size_t destY_destProcWidth;
-    size_t yCopy;
+    size_t destY, x, srcY_srcProcWidth, destY_destProcWidth, yCopy;
     
     for (destY = 0; destY <= dest_h - zoomScaleY; destY += zoomScaleY)
     {
         srcY_srcProcWidth   = srcY  * srcProcWidth;
         destY_destProcWidth = destY * destProcWidth;
-        
         for (x = 0; x < src_w; x++)
         {
-            _vfill_u32(src_u32[srcY_srcProcWidth + x],
-                       dest_u32 + destY_destProcWidth + x * zoomScaleX,
-                       zoomScaleX);
+            _vfill_u32(src_u32[srcY_srcProcWidth + x], dest_u32 + destY_destProcWidth + x * zoomScaleX, zoomScaleX);
         }//for
-        
         for (yCopy = destY + 1; yCopy < destY + zoomScaleY; yCopy++)
         {
-            memcpy(dest_u32 + yCopy * destProcWidth,
-                   dest_u32 + destY_destProcWidth,
-                   dest_w * sizeof(uint32_t));
+            memcpy(dest_u32 + yCopy * destProcWidth, dest_u32 + destY_destProcWidth, dest_w * sizeof(uint32_t));
         }//for
-        
         srcY++;
     }//for
 }//gbImage_GetZoomedTile_NN_FromCrop_Normal_RGBA8888
@@ -1285,8 +1340,33 @@ void gbImage_GetZoomedTile_NN_FromCrop_Normal_RGBA8888(const uint8_t* src,
 
 
 
-
-// do not see how to separate kernel
+// ===================
+// _EPX_Core_RGBA8888:
+// ===================
+//
+// Performs the actual EPX kernel computation, resampling pixels A, C, P, B, and
+// D into dest pixels 1-4.
+//
+//  src
+// -----
+//   A
+// C P B
+//   D
+//
+//  dest
+// ------
+//  1  2
+//  3  4
+//
+// 1 = (C == A && C != D && A != B) ? A : P;
+// 2 = (A == B && A != C && B != D) ? B : P;
+// 3 = (D == C && D != B && C != A) ? C : P;
+// 4 = (B == D && B != A && D != C) ? D : P;
+//
+//
+// This nomenclature is consistent with the Wikipedia article upon which this
+// code is based.
+//
 static FORCE_INLINE void _EPX_Core_RGBA8888(const uint32_t A,        // ( 0, -1)
                                             const uint32_t C,        // (-1,  0)
                                             const uint32_t P,        // ( 0,  0)
@@ -1314,12 +1394,28 @@ static FORCE_INLINE void _EPX_Core_RGBA8888(const uint32_t A,        // ( 0, -1)
 }//_EPX_Core_RGBA8888
 
 
-static FORCE_INLINE void _EPX_ByRow_RGBA8888(const uint32_t* src0,
-                                             const uint32_t* src1,
-                                             const uint32_t* src2,
-                                             uint32_t*       dest0,
-                                             uint32_t*       dest1,
-                                             const size_t    src_w)
+
+// ====================
+// _EPX_ByRow_RGBA8888:
+// ====================
+//
+// Executes the EPX kernel for three input src rows and two dest rows.
+//
+// src0: src_y - 1
+// src1: src_y
+// src2: src_y + 1
+//
+// dest0: dest_y
+// dest1: dest_y + 1
+//
+// This is 2x only.
+//
+static inline void _EPX_ByRow_RGBA8888(const uint32_t* src0,
+                                       const uint32_t* src1,
+                                       const uint32_t* src2,
+                                       uint32_t*       dest0,
+                                       uint32_t*       dest1,
+                                       const size_t    src_w)
 {
     size_t  src_x = 0;
     size_t dest_x = 0;
@@ -1550,6 +1646,169 @@ void OLD_gbImage_GetZoomedTile_NN_FromCrop_EPX_RGBA8888(const uint8_t* src,
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// =====================
+// _Eagle_Core_RGBA8888:
+// =====================
+//
+// Performs the actual Eagle kernel computation, resampling 3x3 src pixels
+// into dest pixels 1-4.
+//
+//  src
+// -----
+// E A F
+// C P B
+// G D H
+//
+//  dest
+// ------
+//  1  2
+//  3  4
+//
+// 1 = (C == E && E == A) ? E : P;
+// 2 = (A == F && F == B) ? F : P;
+// 3 = (C == G && G == D) ? G : P;
+// 4 = (B == H && H == D) ? H : P;
+//
+// This nomenclature is consistent with the Wikipedia article upon which this
+// code is based.
+//
+static FORCE_INLINE void _Eagle_Core_RGBA8888(const uint32_t E,        // (-1, -1)
+                                              const uint32_t A,        // ( 0, -1)
+                                              const uint32_t F,        // (+1, -1)
+                                              const uint32_t C,        // (-1,  0)
+                                              const uint32_t P,        // ( 0,  0)
+                                              const uint32_t B,        // (+1,  0)
+                                              const uint32_t G,        // (-1, +1)
+                                              const uint32_t D,        // ( 0, +1)
+                                              const uint32_t H,        // (+1, +1)
+                                              uint32_t*      dest1,
+                                              uint32_t*      dest2,
+                                              uint32_t*      dest3,
+                                              uint32_t*      dest4)
+{
+    *dest1 = (C == E && E == A) ? E : P;
+    *dest2 = (A == F && F == B) ? F : P;
+    *dest3 = (C == G && G == D) ? G : P;
+    *dest4 = (B == H && H == D) ? H : P;
+}//_Eagle_Core_RGBA8888
+
+
+
+// ======================
+// _Eagle_ByRow_RGBA8888:
+// ======================
+//
+// Executes the Eagle kernel for three input src rows and two dest rows.
+//
+// src0: src_y - 1
+// src1: src_y
+// src2: src_y + 1
+//
+// dest0: dest_y
+// dest1: dest_y + 1
+//
+// This is 2x only.
+//
+static inline void _Eagle_ByRow_RGBA8888(const uint32_t* src0,
+                                         const uint32_t* src1,
+                                         const uint32_t* src2,
+                                         uint32_t*       dest0,
+                                         uint32_t*       dest1,
+                                         const size_t    src_w)
+{
+    size_t  src_x = 0;
+    size_t dest_x = 0;
+    
+    // clamp this to bounds of src, do not assume padding
+    // handle edges out of loop to avoid branching
+    
+    _Eagle_Core_RGBA8888(src0[src_x],       // normally -1
+                         src0[src_x],
+                         src0[src_x+1],
+                         src1[src_x],       // normally -1
+                         src1[src_x],
+                         src1[src_x+1],
+                         src2[src_x],       // normally -1
+                         src2[src_x],
+                         src2[src_x+1],
+                         &dest0[dest_x],
+                         &dest0[dest_x+1],
+                         &dest1[dest_x],
+                         &dest1[dest_x+1]);
+    dest_x += 2;
+    
+    for (src_x=1; src_x < src_w - 1; src_x++)
+    {
+        _Eagle_Core_RGBA8888(src0[src_x-1],
+                             src0[src_x],
+                             src0[src_x+1],
+                             src1[src_x-1],
+                             src1[src_x],
+                             src1[src_x+1],
+                             src2[src_x-1],
+                             src2[src_x],
+                             src2[src_x+1],
+                             &dest0[dest_x],
+                             &dest0[dest_x+1],
+                             &dest1[dest_x],
+                             &dest1[dest_x+1]);
+        dest_x += 2;
+    }//for
+    
+    _Eagle_Core_RGBA8888(src0[src_x-1],
+                         src0[src_x],
+                         src0[src_x],       // normally +1
+                         src1[src_x-1],
+                         src1[src_x],
+                         src1[src_x],       // normally +1
+                         src2[src_x-1],
+                         src2[src_x],
+                         src2[src_x],       // normally +1
+                         &dest0[dest_x],
+                         &dest0[dest_x+1],
+                         &dest1[dest_x],
+                         &dest1[dest_x+1]);
+}//_Eagle_ByRow_RGBA8888
+
+
+
+// =================================================
+// gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888:
+// =========================================--======
+//
+// Modified variant of EPX with theoretically, better edge detection, but at
+// the cost of artifacts.
+//
+// This is 2x only.
+//
+// http://en.wikipedia.org/wiki/Image_scaling
+//
 void gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888(const uint8_t* src,
                                                       const size_t   src_w,
                                                       const size_t   src_h,
@@ -1558,6 +1817,82 @@ void gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888(const uint8_t* src,
                                                       const size_t   dest_w,
                                                       const size_t   dest_h,
                                                       const size_t   dest_rb)
+{
+    uint32_t*  src_u32 = (uint32_t*)src;
+    uint32_t* dest_u32 = (uint32_t*)dest;
+    
+    const size_t  srcProcWidth =  src_rb / 4;
+    const size_t destProcWidth = dest_rb / 4;
+    
+    size_t  srcY;
+    size_t destY = 0;
+    
+    size_t  src0_idx;   // y-1
+    size_t  src1_idx;   // y
+    size_t  src2_idx;   // y+1
+    size_t dest0_idx;   // y
+    size_t dest1_idx;   // y+1
+    
+    // clamp this to bounds of src, do not assume padding
+    // handle edges out of loop to avoid branching
+    
+    // <Row_0>
+    _Eagle_ByRow_RGBA8888(src_u32,
+                          src_u32,
+                          src_u32  +  srcProcWidth,
+                          dest_u32,
+                          dest_u32 + destProcWidth,
+                          src_w);
+    destY += 2;
+    // </Row_0>
+    
+    
+    // <Row_1...n-1>
+    for (srcY = 1; srcY < src_h - 1; srcY++)
+    {
+        src0_idx  =  (srcY-1) *  srcProcWidth;
+        src1_idx  =   srcY    *  srcProcWidth;
+        src2_idx  =  (srcY+1) *  srcProcWidth;
+        dest0_idx =  destY    * destProcWidth;
+        dest1_idx = (destY+1) * destProcWidth;
+        
+        _Eagle_ByRow_RGBA8888(src_u32  +  src0_idx,
+                              src_u32  +  src1_idx,
+                              src_u32  +  src2_idx,
+                              dest_u32 + dest0_idx,
+                              dest_u32 + dest1_idx,
+                              src_w);
+        destY += 2;
+    }//for
+    // </Row_1...n-1>
+    
+    
+    // <Row_n>
+    src0_idx  = ( srcY-1) *  srcProcWidth;
+    src1_idx  =   srcY    *  srcProcWidth;
+    src2_idx  =   srcY    *  srcProcWidth;
+    dest0_idx =  destY    * destProcWidth;
+    dest1_idx = (destY+1) * destProcWidth;
+    
+    _Eagle_ByRow_RGBA8888(src_u32  +  src0_idx,
+                          src_u32  +  src1_idx,
+                          src_u32  +  src2_idx,
+                          dest_u32 + dest0_idx,
+                          dest_u32 + dest1_idx,
+                          src_w);
+    // </Row_n>
+}//gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888
+
+
+/*
+void OLD_gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888(const uint8_t* src,
+                                                          const size_t   src_w,
+                                                          const size_t   src_h,
+                                                          const size_t   src_rb,
+                                                          uint8_t*       dest,
+                                                          const size_t   dest_w,
+                                                          const size_t   dest_h,
+                                                          const size_t   dest_rb)
 {
     uint32_t*  src_u32 = (uint32_t*)src;
     uint32_t* dest_u32 = (uint32_t*)dest;
@@ -1656,8 +1991,8 @@ void gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888(const uint8_t* src,
         
         srcY++;
     }//for
-}//gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888
-
+}//OLD_gbImage_GetZoomedTile_NN_FromCrop_Eagle_RGBA8888
+*/
 
 
 
@@ -1776,6 +2111,58 @@ static FORCE_INLINE void _RGBA8888_to_R8_G8_B8_A8(const uint32_t rgba,
     *a = (rgba             ) >> 24;
 }//_RGBA8888_to_R8_G8_B8_A8
 
+static FORCE_INLINE void _RGBA8888_to_R8_G8_B8_A8_u32(const uint32_t rgba,
+                                                      uint32_t*      r,
+                                                      uint32_t*      g,
+                                                      uint32_t*      b,
+                                                      uint32_t*      a)
+{
+    *r = (rgba & 0x000000FF);
+    *g = (rgba & 0x0000FF00) >> 8;
+    *b = (rgba & 0x00FF0000) >> 16;
+    *a = (rgba             ) >> 24;
+}//_RGBA8888_to_R8_G8_B8_A8_u32
+
+static FORCE_INLINE void _RGBA8888_to_R8_G8_B8_A8_s32(const uint32_t rgba,
+                                                      int32_t*       r,
+                                                      int32_t*       g,
+                                                      int32_t*       b,
+                                                      int32_t*       a)
+{
+    *r = (rgba & 0x000000FF);
+    *g = (rgba & 0x0000FF00) >> 8;
+    *b = (rgba & 0x00FF0000) >> 16;
+    *a = (rgba             ) >> 24;
+}//_RGBA8888_to_R8_G8_B8_A8_s32
+
+
+
+
+static FORCE_INLINE uint32_t _R8_G8_B8_A8_to_RGBA8888_u32(const uint32_t r,
+                                                          const uint32_t g,
+                                                          const uint32_t b,
+                                                          const uint32_t a)
+{
+    return (a << 24) + (b << 16) + (g << 8) + r;
+}//_R8_G8_B8_A8_to_RGBA8888_u32
+
+static FORCE_INLINE uint32_t _R8_G8_B8_A8_to_RGBA8888_s32(const int32_t r,
+                                                          const int32_t g,
+                                                          const int32_t b,
+                                                          const int32_t a)
+{
+    return _R8_G8_B8_A8_to_RGBA8888_u32((uint32_t)r, (uint32_t)g, (uint32_t)b, (uint32_t)a);
+}//_R8_G8_B8_A8_to_RGBA8888_s32
+
+static FORCE_INLINE uint32_t _R8_G8_B8_A8_to_RGBA8888(const uint8_t r,
+                                                      const uint8_t g,
+                                                      const uint8_t b,
+                                                      const uint8_t a)
+{
+    return _R8_G8_B8_A8_to_RGBA8888_u32((uint32_t)r, (uint32_t)g, (uint32_t)b, (uint32_t)a);
+}//_R8_G8_B8_A8_to_RGBA8888
+
+
 // =============================
 // _AccumulateRGBA8888_ToChSums:
 // =============================
@@ -1827,9 +2214,7 @@ static FORCE_INLINE uint32_t _GetRGBA8888_ForChSums(double r_sum,
     uint8_t b = b_sum / rgba_n + 0.5;
     uint8_t a = a_sum / rgba_n + 0.5;
     
-    uint32_t rgba = a << 24 | b << 16 | g << 8 || r;
-    
-    return rgba;
+    return _R8_G8_B8_A8_to_RGBA8888(r, g, b, a);
 }//_GetRGBA8888_ForChSums
 
 
@@ -2190,10 +2575,10 @@ static FORCE_INLINE void _vand_u32_scalar(const uint32_t* src0,
 // Performs:
 //           dest[i] = src0[i] & src1[i];
 //
-static FORCE_INLINE void _vand_u32(const uint32_t* src0,
-                                   const uint32_t* src1,
-                                   uint32_t*       dest,
-                                   const size_t    n)
+static inline void _vand_u32(const uint32_t* src0,
+                             const uint32_t* src1,
+                             uint32_t*       dest,
+                             const size_t    n)
 {
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
     if (n > 4)
@@ -2352,6 +2737,13 @@ void gbImage_Resize_EnlargeTile_NN_RGBA8888(const uint8_t* src,
                                                          roi_w, roi_h, rowBytes,
                                                          dest,
                                                          w, h, rowBytes);
+    }//else if
+    else if (interpolationTypeId == kGB_Image_Interp_XBR)
+    {
+        gbImage_GetZoomedTile_NN_FromCrop_XBR_RGBA8888(src + o,
+                                                       roi_w, roi_h, rowBytes,
+                                                       dest,
+                                                       w, h, rowBytes);
     }//else if
     else
     {
@@ -2577,7 +2969,8 @@ void gbImage_Resize_EnlargeTile_RGBA8888(const uint8_t*  src,
     }//if
     else if (   interpolationTypeId == kGB_Image_Interp_NN
              || interpolationTypeId == kGB_Image_Interp_EPX
-             || interpolationTypeId == kGB_Image_Interp_Eagle)
+             || interpolationTypeId == kGB_Image_Interp_Eagle
+             || interpolationTypeId == kGB_Image_Interp_XBR)
     {
         gbImage_Resize_EnlargeTile_NN_RGBA8888(src,
                                                dest,
@@ -2603,315 +2996,710 @@ void gbImage_Resize_EnlargeTile_RGBA8888(const uint8_t*  src,
 
 
 
-// ======= SIMPLE RESIZE CASE =========
-//    256                                       256
-// +------+                    +--+---+      +------+
-// |      |2                   |xx|128|      |      |2
-// |      |5     -> (z+1) ->   +--+   |  ->  |      |5
-// |      |6                   |128   |      |      |6
-// +------+                    +------+      +------+
+
+
+
+
+
+
+
+
+
+
+// ===============================
+// _XBR_Core_scltethresh_RGBA8888:
+// ===============================
 //
-// 1. Find ROI for src
-// 2. Resize ROI into dest
-// ... problem: lots of tile boundary artifacts
-// ... problem: data interpolated with NODATA
-
-
-// ======= BETTER RESIZE: FASTER =========
-//    256                                       260             256
-// +------+                    +--+---+      +------+        +------+
-// |      |2                   |xx|130|      |      |2       |      |2
-// |      |5     -> (z+1) ->   +--+   |  ->  |      |6   ->  |      |5
-// |      |6     Lanczos 3x3   |130   |      |      |0       |      |6
-// +------+                    +------+      +------+        +------+
-
-// 1. Find ROI for src
-// 2. Adjust ROI and add padding for resampling kernel extent
-// 3. Copy src into two temporary crop images by row
-//      - Crop0: Keep it around for later filtering
-//      - Crop1: 1. Extend edges right and down
-//               2. NODATA fill
-// 4. Make a temporary dest scaled to the padded crop w/h
+// Scalar compare less-than-or-equal-to threshold; interleaved.
 //
-
-// 2. Resize ROI into dest
-// ... but for anything except nearest neighbor, lots of tile boundary artifacts
-
-
-
-
-
-
-
-
-// "HQ2x" scaler code, attempted port from C++
-// Note: it didn't work and is undocumented.
-
-/*
-enum {
-    diff_offset = (0x440 << 21) + (0x207 << 11) + 0x407,
-    diff_mask   = (0x380 << 21) + (0x1f0 << 11) + 0x3f0,
-};
-
-uint32_t *yuvTable = NULL;
-uint8_t rotate[256];
-
-const uint8_t hqTable[256] = {
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 15, 12, 5,  3, 17, 13,
-    4, 4, 6, 18, 4, 4, 6, 18, 5,  3, 12, 12, 5,  3,  1, 12,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 17, 13, 5,  3, 16, 14,
-    4, 4, 6, 18, 4, 4, 6, 18, 5,  3, 16, 12, 5,  3,  1, 14,
-    4, 4, 6,  2, 4, 4, 6,  2, 5, 19, 12, 12, 5, 19, 16, 12,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 16, 12, 5,  3, 16, 12,
-    4, 4, 6,  2, 4, 4, 6,  2, 5, 19,  1, 12, 5, 19,  1, 14,
-    4, 4, 6,  2, 4, 4, 6, 18, 5,  3, 16, 12, 5, 19,  1, 14,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 15, 12, 5,  3, 17, 13,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 16, 12, 5,  3, 16, 12,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 17, 13, 5,  3, 16, 14,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 16, 13, 5,  3,  1, 14,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 16, 12, 5,  3, 16, 13,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 16, 12, 5,  3,  1, 12,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3, 16, 12, 5,  3,  1, 14,
-    4, 4, 6,  2, 4, 4, 6,  2, 5,  3,  1, 12, 5,  3,  1, 14,
-};
-
-static void initialize()
+// For two interleaved RGBA8888 pixels, compares the absolute difference
+// between each individual color channel vs. an abitrary threshold.
+//
+//
+// While the XBR algorithm description implies that testing equality is a
+// straight compare-equal-to, it does not appear to be so, at least as far as
+// I can tell.  There is some amount of effective posterization going on, which
+// can be clearly observed in screenshots.
+//
+// The weighting factors are arbitrary, and performing the compare in YUV
+// colorspace did not seem to affect the results.  Significantly varying the
+// weights did not affect the results much either.  One wonders if the compares
+// this kernel does may be mostly superfluous or at lest not having the intended
+// effect.
+//
+// Note this is not a particularly good way to compare pixels.  A more robust
+// (and slower) approach would use at least distance rather than difference as
+// a metric.
+//
+static FORCE_INLINE bool _XBR_Core_scltethresh_RGBA8888(const uint32_t px0, const uint32_t px1)
 {
- 
-    //static bool initialized = false;
-    //if (initialized == true) return;
-    //initialized = true;
+    int32_t r0;
+    int32_t g0;
+    int32_t b0;
+    int32_t a0;
     
-    if (yuvTable != NULL)
+    int32_t r1;
+    int32_t g1;
+    int32_t b1;
+    int32_t a1;
+    
+    _RGBA8888_to_R8_G8_B8_A8_s32(px0, &r0, &g0, &b0, &a0);
+    _RGBA8888_to_R8_G8_B8_A8_s32(px1, &r1, &g1, &b1, &a1);
+    
+    if (   abs(r0 - r1) > 16
+        || abs(g0 - g1) > 16
+        || abs(b0 - b1) > 16
+        || abs(a0 - a1) > 16)
+    {
+        return false;
+    }//if
+    else
+    {
+        return true;
+    }//else
+}//_XBR_Core_scltethresh_RGBA8888
+
+
+
+
+// ===============
+// _XBR_Core_Diff:
+// ===============
+//
+// The original XBR algorithm shows the difference being computed in the YUV
+// colorspace.
+//
+// This has two problems:
+// 1. Colorspace conversion is not particularly performant
+// 2. It ignores the alpha channel
+//
+// As the interpolation is done in the RGB colorspace, I did not see the point
+// in performing the difference computation in a different one.
+//
+// I could not tell a difference in output between computing the difference as
+// per this method vs. the original's.  However, I could measure a significant
+// performance difference.
+//
+// (the original fxn, at least as described in the thread, converted RGB ->
+//  YUV, then multiplied YUV by the weights 48, 7 and 6 respectively before
+//  returning the sum as a float)
+//
+static FORCE_INLINE int32_t _XBR_Core_Diff(const uint32_t px0, const uint32_t px1)
+{
+    int32_t r0;
+    int32_t g0;
+    int32_t b0;
+    int32_t a0;
+    
+    int32_t r1;
+    int32_t g1;
+    int32_t b1;
+    int32_t a1;
+    
+    _RGBA8888_to_R8_G8_B8_A8_s32(px0, &r0, &g0, &b0, &a0);
+    _RGBA8888_to_R8_G8_B8_A8_s32(px1, &r1, &g1, &b1, &a1);
+    
+    return abs(r0 - r1) + abs(g0 - g1) + abs(b0 - b1) + abs(a0 - a1);
+}//_XBR_Core_Diff
+
+
+
+// ============================
+// _XBR_Core_smsmshrn_RGBA8888:
+// ============================
+//
+// Scalar multiply, scalar multiply, right-shift by constant; interleaved.
+//
+// This is for performing a per-channel weighted average in the XBR kernel,
+// originally named things like "INT_LVL2_up", etc.
+//
+static FORCE_INLINE uint32_t _XBR_Core_smsmshrn_RGBA8888(const uint32_t src0,  const uint32_t src1,
+                                                         const uint32_t muln0, const uint32_t muln1,
+                                                         const uint32_t shrn)
+{
+    uint32_t r0;
+    uint32_t g0;
+    uint32_t b0;
+    uint32_t a0;
+    
+    uint32_t r1;
+    uint32_t g1;
+    uint32_t b1;
+    uint32_t a1;
+    
+    _RGBA8888_to_R8_G8_B8_A8_u32(src0, &r0, &g0, &b0, &a0);
+    _RGBA8888_to_R8_G8_B8_A8_u32(src1, &r1, &g1, &b1, &a1);
+    
+    r0 <<= 8;
+    g0 <<= 8;
+    b0 <<= 8;
+    a0 <<= 8;
+    
+    r1 <<= 8;
+    g1 <<= 8;
+    b1 <<= 8;
+    a1 <<= 8;
+    
+    r0 = (r0 * muln0 + r1 * muln1) >> shrn;
+    g0 = (g0 * muln0 + g1 * muln1) >> shrn;
+    b0 = (b0 * muln0 + b1 * muln1) >> shrn;
+    a0 = (a0 * muln0 + a1 * muln1) >> shrn;
+    
+    r0 >>= 8;
+    g0 >>= 8;
+    b0 >>= 8;
+    a0 >>= 8;
+    
+    return _R8_G8_B8_A8_to_RGBA8888_u32(r0, g0, b0, a0);
+}//_smsmshrn_RGBA8888
+
+
+// ===================
+// _XBR_Core_RGBA8888:
+// ===================
+//
+// Core kernel which has to be iterated over in 4x passes.
+//
+// Mostly derived from this thread:
+//
+// http://board.byuu.org/viewtopic.php?f=10&t=2248
+//
+// Unfortunately, I was not able to develop a functional XBR kernel from the
+// description in that thread alone.
+//
+// The likely non-standard ways of getting the kernel operational, combined with
+// it operating in the RGB colorspace exclusively, makes this implementation at
+// best a fast approximation of XBR.
+//
+// With the original C sources gone, I do not believe it is possible to
+// reconstruct it more precisely.
+//
+// tl;dr: this should be called "PseudoXBR"
+//
+static FORCE_INLINE void _XBR_Core_RGBA8888(                  const uint32_t B,  const uint32_t C,
+                                            const uint32_t D, const uint32_t E,  const uint32_t F, const uint32_t F4,
+                                            const uint32_t G, const uint32_t H,  const uint32_t I, const uint32_t I4,
+                                                              const uint32_t H5, const uint32_t I5,
+                                            uint32_t* dest1, uint32_t* dest2, uint32_t* dest3)
+{
+    if (E == H && E == F) // quick fail test from C# sources; this checks identical pixels right, and right-and-down.
     {
         return;
     }//if
     
-//    yuvTable = new uint32_t[32768];
-    yuvTable = malloc(sizeof(uint32_t) * 32768);
+    // "Interpolation level 1"
+    // "This interpolation is the most basic and only can address 45 degree diagonals. It must change the region below blue line in this picture:"
+    // [nb: author's "red" and "blue" are unrelated to color channels]
+    //
+    int32_t  wd_red    = (_XBR_Core_Diff(E, C) + _XBR_Core_Diff(E, G ) + _XBR_Core_Diff(I, F4) + _XBR_Core_Diff(I, H5)) + (_XBR_Core_Diff(H, F) << 2);
+    int32_t  wd_blue   = (_XBR_Core_Diff(H, D) + _XBR_Core_Diff(H, I5) + _XBR_Core_Diff(F, I4) + _XBR_Core_Diff(F, B )) + (_XBR_Core_Diff(E, I) << 2);
+    uint32_t new_color = _XBR_Core_Diff(E, F) <= _XBR_Core_Diff(E, H) ? F : H;
+    bool     edr       = wd_red < wd_blue; // "edge detection rule"
     
-    for (uint32_t i = 0; i < 32768; i++)
+    // What follows is the "original" logic described by Hyllian, both thresholded
+    // and using exact compares as originally described as "level 2" interpolation.
+    //
+    // Unfortunately, both thresholded and exact compares did not produce the
+    // expected results, regardless of colorspace.  Based off these results I do
+    // believe the description on that page fully explains the XBR algorithm.
+    //
+    // Further determinations did not seem possible due to the loss of the
+    // original C sources.  All that remains of XBR is the shader code and
+    // appearently, a C# implementation.
+    /*
+    if (edr)
     {
-        uint8_t R = (i >>  0) & 31;
-        uint8_t G = (i >>  5) & 31;
-        uint8_t B = (i >> 10) & 31;
-        
-        //bgr555->bgr888
-        double r = (R << 3) | (R >> 2);
-        double g = (G << 3) | (G >> 2);
-        double b = (B << 3) | (B >> 2);
-        
-        //bgr888->yuv888
-        double y = (r + g + b) * (0.25 * (63.5 / 48.0));
-        double u = ((r - b) * 0.25 + 128.0) * (7.5 / 7.0);
-        double v = ((g * 2.0 - r - b) * 0.125 + 128.0) * (7.5 / 6.0);
-        
-        yuvTable[i] = ((unsigned)y << 21) + ((unsigned)u << 11) + ((unsigned)v);
-    }
-    
-    for(unsigned n = 0; n < 256; n++)
-    {
-        rotate[n] = ((n >> 2) & 0x11) | ((n << 2) & 0x88)
-        | ((n & 0x01) << 5) | ((n & 0x08) << 3)
-        | ((n & 0x10) >> 3) | ((n & 0x80) >> 5);
-    }
-}
-
-static void terminate()
-{
-    //delete[] yuvTable;
-    free(yuvTable);
-    yuvTable = NULL;
-}
-
-static bool same(uint16_t x, uint16_t y) {
-    return !((yuvTable[x] - yuvTable[y] + diff_offset) & diff_mask);
-}
-
-static bool diff(uint32_t x, uint16_t y) {
-    return ((x - yuvTable[y]) & diff_mask);
-}
-
-static void grow(uint32_t* n)
-{
-    *n = *n | (*n << 16);
-    *n = *n & 0x03e07c1f;
-}
-
-static uint16_t pack(uint32_t n)
-{
-    n &= 0x03e07c1f;
-    return n | (n >> 16);
-}
-
-static uint16_t blend1(uint32_t A, uint32_t B)
-{
-    grow(&A);
-    grow(&B);
-    
-    A = (A * 3 + B) >> 2;
-    
-    return pack(A);
-}
-
-static uint16_t blend2(uint32_t A, uint32_t B, uint32_t C)
-{
-    grow(&A);
-    grow(&B);
-    grow(&C);
-    
-    return pack((A * 2 + B + C) >> 2);
-}
-
-static uint16_t blend3(uint32_t A, uint32_t B, uint32_t C)
-{
-    grow(&A);
-    grow(&B);
-    grow(&C);
-    
-    return pack((A * 5 + B * 2 + C) >> 3);
-}
-
-static uint16_t blend4(uint32_t A, uint32_t B, uint32_t C)
-{
-    grow(&A);
-    grow(&B);
-    grow(&C);
-    
-    return pack((A * 6 + B + C) >> 3);
-}
-
-static uint16_t blend5(uint32_t A, uint32_t B, uint32_t C)
-{
-    grow(&A);
-    grow(&B);
-    grow(&C);
-    
-    return pack((A * 2 + (B + C) * 3) >> 3);
-}
-
-static uint16_t blend6(uint32_t A, uint32_t B, uint32_t C)
-{
-    grow(&A);
-    grow(&B);
-    grow(&C);
-    
-    return pack((A * 14 + B + C) >> 4);
-}
-
-static uint16_t blend(unsigned rule, uint16_t E, uint16_t A, uint16_t B, uint16_t D, uint16_t F, uint16_t H)
-{
-    switch(rule) { default:
-        case  0: return E;
-        case  1: return blend1(E, A);
-        case  2: return blend1(E, D);
-        case  3: return blend1(E, B);
-        case  4: return blend2(E, D, B);
-        case  5: return blend2(E, A, B);
-        case  6: return blend2(E, A, D);
-        case  7: return blend3(E, B, D);
-        case  8: return blend3(E, D, B);
-        case  9: return blend4(E, D, B);
-        case 10: return blend5(E, D, B);
-        case 11: return blend6(E, D, B);
-        case 12: return same(B, D) ? blend2(E, D, B) : E;
-        case 13: return same(B, D) ? blend5(E, D, B) : E;
-        case 14: return same(B, D) ? blend6(E, D, B) : E;
-        case 15: return same(B, D) ? blend2(E, D, B) : blend1(E, A);
-        case 16: return same(B, D) ? blend4(E, D, B) : blend1(E, A);
-        case 17: return same(B, D) ? blend5(E, D, B) : blend1(E, A);
-        case 18: return same(B, F) ? blend3(E, B, D) : blend1(E, D);
-        case 19: return same(D, H) ? blend3(E, D, B) : blend1(E, B);
-    }
-}
-
-//dllexport
-void filter_size(unsigned* width, unsigned* height)
-{
-    initialize();
-    
-    *width  = *width * 2;
-    *height = *height * 2;
-}
-
-//dllexport
-void filter_render(uint32_t *colortable,
-                   uint32_t *output,
-                   unsigned outpitch,
-                   const uint16_t *input,
-                   unsigned pitch,
-                   unsigned width,
-                   unsigned height)
-{
-    initialize();
-    pitch >>= 1;
-    outpitch >>= 2;
-    
-    if (colortable == NULL)
-    {
-        colortable = (uint32_t*)yuvTable;  // probably wrong(?)
-    }//if
-    
-    //#pragma omp parallel for
-    
-    for(unsigned y = 0; y < height; y++)
-    {
-        const uint16_t *in = input + y * pitch;
-        
-        uint32_t *out0 = output + y * outpitch * 2;
-        uint32_t *out1 = output + y * outpitch * 2 + outpitch;
-        
-        int prevline = (y == 0 ? 0 : pitch);
-        int nextline = (y == height - 1 ? 0 : pitch);
-        
-        in++;
-        
-        *out0++ = 0;
-        *out0++ = 0;
-        *out1++ = 0;
-        *out1++ = 0;
-        
-        for(unsigned x = 1; x < width - 1; x++)
+        //if (F == G && H == C)
+        if (_XBR_Core_scltethresh_RGBA8888(F, G) && _XBR_Core_scltethresh_RGBA8888(H, C))
         {
-            uint16_t A = *(in - prevline - 1);
-            uint16_t B = *(in - prevline + 0);
-            uint16_t C = *(in - prevline + 1);
-            uint16_t D = *(in - 1);
-            uint16_t E = *(in + 0);
-            uint16_t F = *(in + 1);
-            uint16_t G = *(in + nextline - 1);
-            uint16_t H = *(in + nextline + 0);
-            uint16_t I = *(in + nextline + 1);
-            uint32_t e = yuvTable[E] + diff_offset;
-            
-            uint8_t pattern;
-            pattern  = diff(e, A) << 0;
-            pattern |= diff(e, B) << 1;
-            pattern |= diff(e, C) << 2;
-            pattern |= diff(e, D) << 3;
-            pattern |= diff(e, F) << 4;
-            pattern |= diff(e, G) << 5;
-            pattern |= diff(e, H) << 6;
-            pattern |= diff(e, I) << 7;
-            
-            *(out0 + 0) = colortable[blend(hqTable[pattern], E, A, B, D, F, H)]; pattern = rotate[pattern];
-            *(out0 + 1) = colortable[blend(hqTable[pattern], E, C, F, B, H, D)]; pattern = rotate[pattern];
-            *(out1 + 1) = colortable[blend(hqTable[pattern], E, I, H, F, D, B)]; pattern = rotate[pattern];
-            *(out1 + 0) = colortable[blend(hqTable[pattern], E, G, D, H, B, F)];
-            
-            in++;
-            out0 += 2;
-            out1 += 2;
-        }//for x
+            *dest3 = _XBR_Core_smsmshrn_RGBA8888(*dest3, new_color, 1, 3, 2); // INT_LVL2_left
+            *dest2 = _XBR_Core_smsmshrn_RGBA8888(*dest2, new_color, 3, 1, 2); // INT_LVL2_up
+        }//if
+        //else if (F == G)
+        else if (_XBR_Core_scltethresh_RGBA8888(F, G))
+        {
+            *dest3 = _XBR_Core_smsmshrn_RGBA8888(*dest3, new_color, 1, 3, 2); // INT_LVL2_left
+        }//else if
+        //else if (H == C)
+        else if (_XBR_Core_scltethresh_RGBA8888(H, C))
+        {
+            *dest1 = _XBR_Core_smsmshrn_RGBA8888(*dest1, new_color, 3, 1, 2); // INT_LVL2_up
+        }//else if
+        else
+        {
+            *dest3 = _XBR_Core_smsmshrn_RGBA8888(*dest3, new_color, 1, 1, 1); // INT_LVL1
+        }//else
+    }//if
+    */
+    
+    // What follows here is the "fixed" logic, using secondary sources from:
+    // https://code.google.com/p/2dimagefilter/source/browse/trunk/ImageResizer/Imager/Filters/libXBR.cs
+    //
+    // Note I am uncertain if this is the actual original XBR logic or not.
+    // However, it produces a result that (more or less) matches expectations
+    // and screenshots of XBR, so it seems a reasonable approximation.
+    
+    if (edr
+        && (   (!_XBR_Core_scltethresh_RGBA8888(F, B) && !_XBR_Core_scltethresh_RGBA8888(H, D))
+            || ( _XBR_Core_scltethresh_RGBA8888(E, I) && !_XBR_Core_scltethresh_RGBA8888(F, I4) && !_XBR_Core_scltethresh_RGBA8888(H, I5))
+            ||   _XBR_Core_scltethresh_RGBA8888(E, G)
+            ||   _XBR_Core_scltethresh_RGBA8888(E, C)))
+    {
+        int32_t ke  = _XBR_Core_Diff(F, G);
+        int32_t ki  = _XBR_Core_Diff(H, C);
+        bool    ex2 = !_XBR_Core_scltethresh_RGBA8888(F, G) && !_XBR_Core_scltethresh_RGBA8888(B, C);
+        bool    ex3 = !_XBR_Core_scltethresh_RGBA8888(E, G) && !_XBR_Core_scltethresh_RGBA8888(D, G);
         
-        in++;
-        *out0++ = 0; *out0++ = 0;
-        *out1++ = 0; *out1++ = 0;
-    }//for y
-}//filter render
-*/
+        if ((ki >= (ke << 1)) && ex3)
+        {
+            *dest3 = _XBR_Core_smsmshrn_RGBA8888(*dest3, new_color, 1, 3, 2); // INT_LVL2_left
+            *dest2 = _XBR_Core_smsmshrn_RGBA8888(*dest2, new_color, 3, 1, 2); // INT_LVL2_up
+        }//if
+        else if ((ke >= (ki << 1)) && ex2)
+        {
+            *dest3 = _XBR_Core_smsmshrn_RGBA8888(*dest3, new_color, 1, 3, 2); // INT_LVL2_left
+            *dest1 = _XBR_Core_smsmshrn_RGBA8888(*dest1, new_color, 3, 1, 2); // INT_LVL2_up
+        }//else if
+        else
+        {
+            *dest3 = _XBR_Core_smsmshrn_RGBA8888(*dest3, new_color, 1, 1, 1); // INT_LVL1
+        }//else
+        
+    }//if
+    else if (wd_red <= wd_blue)
+    {
+        *dest3 = _XBR_Core_smsmshrn_RGBA8888(*dest3, new_color, 3, 1, 2);
+    }//else if
+}//_XBR_Core_RGBA8888
 
 
 
+static FORCE_INLINE void _XBR_Core_Wrapper_RGBA8888(                   const uint32_t A1, const uint32_t B1, const uint32_t C1,
+                                                    const uint32_t A0, const uint32_t A,  const uint32_t B,  const uint32_t C, const uint32_t C4,
+                                                    const uint32_t D0, const uint32_t D,  const uint32_t E,  const uint32_t F, const uint32_t F4,
+                                                    const uint32_t G0, const uint32_t G,  const uint32_t H,  const uint32_t I, const uint32_t I4,
+                                                                       const uint32_t G5, const uint32_t H5, const uint32_t I5,
+                                                    uint32_t* dest0, uint32_t* dest1,
+                                                    uint32_t* dest2, uint32_t* dest3)
+{
+    *dest0 = E;
+    *dest1 = E;
+    *dest2 = E;
+    *dest3 = E;
+    
+    // http://board.byuu.org/viewtopic.php?f=10&t=2248
+    //
+    // > "For that reason, from now on, all algorithm terms will be related to the
+    // down-right edge. You'll have to apply the same rules to the other three
+    // edges by symmetry."
+    //
+    // Translation: pass in a clipped version of the original, then for the other
+    // three passes, rotate such that the edge detection is preserved.
+    
+    //    A1 B1 C1
+    // A0 A  B  C  C4      d0  d1
+    // D0 D  E  F  F4      d2  d3
+    // G0 G  H  I  I4
+    //    G5 H5 I5
+
+    // if only there were giant machines that could rotate matrices of numbers.
+    
+    // <Pass1>
+    //        __ __ __
+    //     __ __ B  C  __      __  d1
+    //     __ D  E  F  F4      d2  d3
+    //     __ G  H  I  I4
+    //        __ H5 I5
+    // </Pass1>
+    
+    // <Pass2>
+    //        __ B1 C1
+    //     __ A  B  C  C4      d0  d1
+    //     __ D  E  F  F4      __  d3
+    //     __ __ H  I  __
+    //        __ __ __
+    //     <Rot90>
+    //            __ __ __
+    //         __ __ D  A  __      __  d0
+    //         __ H  E  B  B1      d3  d1
+    //         __ I  F  C  C1
+    //            __ F4 C4
+    //     </Rot90>
+    // </Pass2>
+    
+    // <Pass3>
+    //        A1 B1 __
+    //     A0 A  B  C  __      d0  d1
+    //     D0 D  E  F  __      d2  __
+    //     __ G  H  __ __
+    //        __ __ __
+    //     <Rot90>
+    //            D0 A0 __
+    //         G  D  A  A1 __      d2  d0
+    //         H  E  B  B1 __      __  d1
+    //         __ F  C  __ __
+    //            __ __ __
+    //     </Rot90>
+    //     <Rot90>
+    //            H  G  __
+    //         F  E  D  D0 __      __  d2
+    //         C  B  A  A0 __      d1  d0
+    //         __ B1 A1 __ __
+    //            __ __ __
+    //     </Rot90>
+    // </Pass3>
+    
+    // <Pass4>
+    //        __ __ __
+    //     __ A  B  __ __      d0  __
+    //     D0 D  E  F  __      d2  d3
+    //     G0 G  H  I  __
+    //        G5 H5 __
+    //     <Rot90>
+    //            __ __ __
+    //         __ G0 D0 __ __      d2  d0
+    //         G5 G  D  A  __      d3  __
+    //         H5 H  E  B  __
+    //            I  F  __
+    //     </Rot90>
+    //     <Rot90>
+    //            __ __ __
+    //         __ H5 G5 __ __      d3  d2
+    //         I  H  G  G0 __      __  d0
+    //         F  E  D  D0 __
+    //            B  A  __
+    //     </Rot90>
+    //     <Rot90>
+    //            __ __ __
+    //         __ F  I  __ __      __  d3
+    //         B  E  H  H5 __      d0  d2
+    //         A  D  G  G5 __
+    //            D0 G0 __
+    //     </Rot90>
+    // </Pass4>
+    
+    _XBR_Core_RGBA8888(    B,  C,
+                       D,  E,  F,  F4,
+                       G,  H,  I,  I4,
+                           H5, I5,
+                       dest1, dest2, dest3);
+    
+    _XBR_Core_RGBA8888(    D,  A,
+                       H,  E,  B,  B1,
+                       I,  F,  C,  C1,
+                           F4, C4,
+                       dest0, dest3, dest1);
+    
+    _XBR_Core_RGBA8888(    H,  G,
+                       F,  E,  D,  D0,
+                       C,  B,  A,  A0,
+                           B1, A1,
+                       dest2, dest1, dest0);
+    
+    _XBR_Core_RGBA8888(    F,  I,
+                       B,  E,  H,  H5,
+                       A,  D,  G,  G5,
+                           D0, G0,
+                       dest3, dest0, dest2);
+}//_XBR_Core_Wrapper_RGBA8888
+
+
+
+static inline void _XBR_ByRow_RGBA8888(const uint32_t* src0,
+                                       const uint32_t* src1,
+                                       const uint32_t* src2,
+                                       const uint32_t* src3,
+                                       const uint32_t* src4,
+                                       uint32_t*       dest0,
+                                       uint32_t*       dest1,
+                                       const size_t    src_w)
+{
+    size_t  src_x = 0;
+    size_t dest_x = 0;
+    
+    // clamp this to bounds of src, do not assume padding
+    // handle edges out of loop to avoid branching
+    
+    _XBR_Core_Wrapper_RGBA8888(src0[src_x], // -1
+                               src0[src_x],
+                               src0[src_x+1],
+                               src1[src_x], // -2
+                               src1[src_x], // -2
+                               src1[src_x],
+                               src1[src_x+1],
+                               src1[src_x+2],
+                               src2[src_x], // -2
+                               src2[src_x], // -1
+                               src2[src_x],
+                               src2[src_x+1],
+                               src2[src_x+2],
+                               src3[src_x], // -2
+                               src3[src_x], // -1
+                               src3[src_x],
+                               src3[src_x+1],
+                               src3[src_x+2],
+                               src4[src_x], // -1
+                               src4[src_x],
+                               src4[src_x+1],
+                               &dest0[dest_x],
+                               &dest0[dest_x+1],
+                               &dest1[dest_x],
+                               &dest1[dest_x+1]);
+    dest_x += 2;
+    src_x++;
+    
+    
+    _XBR_Core_Wrapper_RGBA8888(src0[src_x-1],
+                               src0[src_x],
+                               src0[src_x+1],
+                               src1[src_x-1], // -2
+                               src1[src_x-1], // -2
+                               src1[src_x],
+                               src1[src_x+1],
+                               src1[src_x+2],
+                               src2[src_x-1], // -2
+                               src2[src_x-1],
+                               src2[src_x],
+                               src2[src_x+1],
+                               src2[src_x+2],
+                               src3[src_x-1], // -2
+                               src3[src_x-1],
+                               src3[src_x],
+                               src3[src_x+1],
+                               src3[src_x+2],
+                               src4[src_x-1],
+                               src4[src_x],
+                               src4[src_x+1],
+                               &dest0[dest_x],
+                               &dest0[dest_x+1],
+                               &dest1[dest_x],
+                               &dest1[dest_x+1]);
+    dest_x += 2;
+    
+    
+    
+    
+    for (src_x=2; src_x < src_w - 2; src_x++)
+    {
+        _XBR_Core_Wrapper_RGBA8888(src0[src_x-1],
+                                   src0[src_x],
+                                   src0[src_x+1],
+                                   src1[src_x-2],
+                                   src1[src_x-1],
+                                   src1[src_x],
+                                   src1[src_x+1],
+                                   src1[src_x+2],
+                                   src2[src_x-2],
+                                   src2[src_x-1],
+                                   src2[src_x],
+                                   src2[src_x+1],
+                                   src2[src_x+2],
+                                   src3[src_x-2],
+                                   src3[src_x-1],
+                                   src3[src_x],
+                                   src3[src_x+1],
+                                   src3[src_x+2],
+                                   src4[src_x-1],
+                                   src4[src_x],
+                                   src4[src_x+1],
+                                   &dest0[dest_x],
+                                   &dest0[dest_x+1],
+                                   &dest1[dest_x],
+                                   &dest1[dest_x+1]);
+        dest_x += 2;
+    }//for
+    
+    _XBR_Core_Wrapper_RGBA8888(src0[src_x-1],
+                               src0[src_x],
+                               src0[src_x+1],
+                               src1[src_x-2],
+                               src1[src_x-1],
+                               src1[src_x],
+                               src1[src_x+1],
+                               src1[src_x+1], // +2
+                               src2[src_x-2],
+                               src2[src_x-1],
+                               src2[src_x],
+                               src2[src_x+1],
+                               src2[src_x+1], // +2
+                               src3[src_x-2],
+                               src3[src_x-1],
+                               src3[src_x],
+                               src3[src_x+1],
+                               src3[src_x+1], // +2
+                               src4[src_x-1],
+                               src4[src_x],
+                               src4[src_x+1],
+                               &dest0[dest_x],
+                               &dest0[dest_x+1],
+                               &dest1[dest_x],
+                               &dest1[dest_x+1]);
+    dest_x += 2;
+    src_x++;
+    
+    _XBR_Core_Wrapper_RGBA8888(src0[src_x-1],
+                               src0[src_x],
+                               src0[src_x],
+                               src1[src_x-2],
+                               src1[src_x-1],
+                               src1[src_x],
+                               src1[src_x],
+                               src1[src_x],
+                               src2[src_x-2],
+                               src2[src_x-1],
+                               src2[src_x],
+                               src2[src_x],
+                               src2[src_x],
+                               src3[src_x-2],
+                               src3[src_x-1],
+                               src3[src_x],
+                               src3[src_x],
+                               src3[src_x],
+                               src4[src_x-1],
+                               src4[src_x],
+                               src4[src_x],
+                               &dest0[dest_x],
+                               &dest0[dest_x+1],
+                               &dest1[dest_x],
+                               &dest1[dest_x+1]);
+}//_XBR_ByRow_RGBA8888
+
+
+void gbImage_GetZoomedTile_NN_FromCrop_XBR_RGBA8888(const uint8_t* src,
+                                                    const size_t   src_w,
+                                                    const size_t   src_h,
+                                                    const size_t   src_rb,
+                                                    uint8_t*       dest,
+                                                    const size_t   dest_w,
+                                                    const size_t   dest_h,
+                                                    const size_t   dest_rb)
+{
+    uint32_t*  src_u32 = (uint32_t*)src;
+    uint32_t* dest_u32 = (uint32_t*)dest;
+    
+    const size_t  srcProcWidth =  src_rb / 4;
+    const size_t destProcWidth = dest_rb / 4;
+    
+    size_t  srcY = 0;
+    size_t destY = 0;
+    
+    size_t  src0_idx;   // y-2
+    size_t  src1_idx;   // y-1
+    size_t  src2_idx;   // y
+    size_t  src3_idx;   // y+1
+    size_t  src4_idx;   // y+2
+    
+    size_t dest0_idx;   // y
+    size_t dest1_idx;   // y+1
+    
+    // clamp this to bounds of src, do not assume padding
+    // handle edges out of loop to avoid branching
+    
+    // <Row_0>
+    src2_idx  =   srcY    *  srcProcWidth;
+    src3_idx  =  (srcY+1) *  srcProcWidth;
+    src4_idx  =  (srcY+2) *  srcProcWidth;
+    
+    dest0_idx =  destY    * destProcWidth;
+    dest1_idx = (destY+1) * destProcWidth;
+    
+    _XBR_ByRow_RGBA8888(src_u32  +  src2_idx,
+                        src_u32  +  src2_idx,
+                        src_u32  +  src2_idx,
+                        src_u32  +  src3_idx,
+                        src_u32  +  src4_idx,
+                        dest_u32 + dest0_idx,
+                        dest_u32 + dest1_idx,
+                        src_w);
+    
+    destY += 2;
+    srcY++;
+    // </Row_0>
+    
+    // <Row_1>
+    src1_idx  =  (srcY-1) *  srcProcWidth;
+    src2_idx  =   srcY    *  srcProcWidth;
+    src3_idx  =  (srcY+1) *  srcProcWidth;
+    src4_idx  =  (srcY+2) *  srcProcWidth;
+    
+    dest0_idx =  destY    * destProcWidth;
+    dest1_idx = (destY+1) * destProcWidth;
+    
+    _XBR_ByRow_RGBA8888(src_u32  +  src1_idx,
+                        src_u32  +  src1_idx,
+                        src_u32  +  src2_idx,
+                        src_u32  +  src3_idx,
+                        src_u32  +  src4_idx,
+                        dest_u32 + dest0_idx,
+                        dest_u32 + dest1_idx,
+                        src_w);
+    
+    destY += 2;
+    // </Row_1>
+    
+    // <Row_2...n-2>
+    for (srcY = 2; srcY < src_h - 2; srcY++)
+    {
+        src0_idx  =  (srcY-2) *  srcProcWidth;
+        src1_idx  =  (srcY-1) *  srcProcWidth;
+        src2_idx  =   srcY    *  srcProcWidth;
+        src3_idx  =  (srcY+1) *  srcProcWidth;
+        src4_idx  =  (srcY+2) *  srcProcWidth;
+        
+        dest0_idx =  destY    * destProcWidth;
+        dest1_idx = (destY+1) * destProcWidth;
+        
+        _XBR_ByRow_RGBA8888(src_u32  +  src0_idx,
+                            src_u32  +  src1_idx,
+                            src_u32  +  src2_idx,
+                            src_u32  +  src3_idx,
+                            src_u32  +  src4_idx,
+                            dest_u32 + dest0_idx,
+                            dest_u32 + dest1_idx,
+                            src_w);
+        destY += 2;
+    }//for
+    // </Row_2...n-2>
+    
+    
+    // <Row_n-1>
+    src0_idx  =  (srcY-2) *  srcProcWidth;
+    src1_idx  =  (srcY-1) *  srcProcWidth;
+    src2_idx  =   srcY    *  srcProcWidth;
+    src3_idx  =  (srcY+1) *  srcProcWidth;
+    
+    dest0_idx =  destY    * destProcWidth;
+    dest1_idx = (destY+1) * destProcWidth;
+    
+    _XBR_ByRow_RGBA8888(src_u32  +  src0_idx,
+                        src_u32  +  src1_idx,
+                        src_u32  +  src2_idx,
+                        src_u32  +  src3_idx,
+                        src_u32  +  src3_idx,
+                        dest_u32 + dest0_idx,
+                        dest_u32 + dest1_idx,
+                        src_w);
+    destY += 2;
+    srcY++;
+    // </Row_n-1>
+    
+    // <Row_n>
+    src0_idx  =  (srcY-2) *  srcProcWidth;
+    src1_idx  =  (srcY-1) *  srcProcWidth;
+    src2_idx  =   srcY    *  srcProcWidth;
+    
+    dest0_idx =  destY    * destProcWidth;
+    dest1_idx = (destY+1) * destProcWidth;
+    
+    _XBR_ByRow_RGBA8888(src_u32  +  src0_idx,
+                        src_u32  +  src1_idx,
+                        src_u32  +  src2_idx,
+                        src_u32  +  src2_idx,
+                        src_u32  +  src2_idx,
+                        dest_u32 + dest0_idx,
+                        dest_u32 + dest1_idx,
+                        src_w);
+    // </Row_n>
+}//gbImage_GetZoomedTile_NN_FromCrop_XBR_RGBA8888
 
 

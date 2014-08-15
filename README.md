@@ -105,12 +105,12 @@ The output of either Lanczos or average has a "pixel perfect" alpha channel, eve
 
 ###### Enlarging
 
-- Default: EPX
-- Optional: Lanczos 3x3 *(filtered)* *(OS X)*, Lanczos 5x5 *(filtered)* *(OS X)*, Nearest Neighbor, Bilinear *(filtered)*, Eagle
+- Default: XBR
+- Optional: Lanczos 3x3 *(filtered)* *(OS X)*, Lanczos 5x5 *(filtered)* *(OS X)*, Nearest Neighbor, Bilinear *(filtered)*, Eagle, EPX
 
 ###### Enlarging: Notes
 
-For tiles that are not photographic imagery, enlarging tiles is quite different from downsampling them, as common resampling techniques produce unexpectedly disappointing results.  This is why EPX is the default method for enlarging tiles.
+For tiles that are not photographic imagery, enlarging tiles is quite different from downsampling them, as common resampling techniques produce unexpectedly disappointing results.  This is why XBR is the default method for enlarging tiles.
 
 This is the same basic problem emulators have when trying to upscale pixel art with a limited color palette (eg, Mario).  So, although somewhat unorthodox, it makes sense to leverage emulator resampling algorithms for GIS use here.  What's good for Mario is good for your average non-photographic imagery tile.
 
@@ -118,7 +118,7 @@ More info: https://en.wikipedia.org/wiki/Image_scaling
 
 On the other hand, for satellite or aerial photographic imagery, Lanczos is probably your best bet.  If I included a comparison of the prototypical Lenna image, Lanczos would win.
 
-Between EPX and Lanczos you should be able to relatively easily extend any tile set by another few zoom levels, even if traditional GIS resampling methods haven't worked for you in the past here. (of course, rendering higher-resolution data in the first place is preferable)
+Between XBR and Lanczos you should be able to relatively easily extend any tile set by another few zoom levels, even if traditional GIS resampling methods haven't worked for you in the past here. (of course, rendering higher-resolution data in the first place is preferable)
 
 
 
@@ -133,7 +133,7 @@ Visual comparison, for enlarging tiles: (click to zoom in)
 - Nearest neighbor (NN): This provides acceptable results for zooming in by about 2x, but not really beyond that.  While NN never creates artifacts, it is blocky.
 - Lanczos: For images with limited color depth, Lanczos does not handle the underlying rasterized geometry features terribly well, and actually draws attention to that with ringing artifacts.  Bilinear doesn't have the ringing artifacts, but really isn't any better.
 - EPX (Scale2x): EPX is sort of a specialized variant of NN with edge detection.  It outperforms traditional resampling techniques on most rasters that are not photographic imagery.
-- xBRZ: xBRZ is similar to, yet significantly better than EPX.  It was the best "pixel art" type resampler I found.  The differences between EPX are subtle on the interpolation sample image, but xBRZ is significantly better on the sample OSM tile. *(xBRZ not implemented in Retile)*
+- xBRZ: xBRZ is similar to, yet significantly better than EPX.  It was the best "pixel art" type resampler I found.  The differences between EPX are subtle on the interpolation sample image, but xBRZ is significantly better on the sample OSM tile. *(Retile currently implements XBR, not xBRZ)*
 
 
 

@@ -441,7 +441,7 @@ static FORCE_INLINE void _IndexedToPlanar8_IfNeeded_PNG(uint8_t*         idxs,
                                                         const bool       isOpaque,
                                                         int*             png_color_type)
 {
-    if (!isOpaque && bitsPerComp == 8 && _IsPaletteGrayscalePNG(palette, color_n))
+    if (isOpaque && bitsPerComp == 8 && _IsPaletteGrayscalePNG(palette, color_n))
     {
         *png_color_type = PNG_COLOR_TYPE_GRAY;                  // Indexed8 -> Planar8
         

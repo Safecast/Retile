@@ -1,38 +1,463 @@
 #include "gbImage_png.h"
 
 
-// BEST FRAMEWORK EVAR
-static inline bool _AccelerateFuckYeah()
-{
-    bool accelerateFuckYeah = false;
-    
-#ifdef VIMAGE_CONVERSION_H
-    accelerateFuckYeah = true;
+#ifndef FORCE_INLINE
+#  ifdef _MSC_VER
+#    define FORCE_INLINE __forceinline
+#  else
+#    ifdef __GNUC__
+#      define FORCE_INLINE inline __attribute__((always_inline))
+#    else
+#      define FORCE_INLINE inline
+#    endif
+#  endif
 #endif
-    
-    return accelerateFuckYeah;
-}//_AccelerateFuckYeah()
+
+// =========================
+// SIMD vectorization notes:
+// =========================
+//
+// - Some vectorization uses Apple's Accelerate framework (OS X / iOS only).
+// - The Accelerate framework works on Intel/ARM.
+// - If the Accelerate framework is not available, equivalent scalar fallback
+//   code is used.
+// - The rest of the vectorization uses ARM NEON intrinsics.
+// - NEON intrinsics *will* work on Intel platforms provided translation macros
+//   from NEONvsSSE_5.h are present.
+// - NEON -> SSE conversion is not 100%.  Verify the translation macros are
+//   as expected, especially for 8-bit types, unsigned types, and bitshifts
+//   involving another vector.
 
 
 
-// returns true if using ARM's neon.h or Intel's NEONvsSSE_5.h which has macros redefining NEON intrins to SSE/AVX
-static inline bool _CanUseNEON()
+
+
+
+
+
+// =======================
+// _IsPaletteGrayscalePNG:
+// =======================
+//
+// Returns true if all the png_color palette entries in src are equal to each
+// other.  This is a more precise answer than may be necessary (human perception
+// of grayscale may not be so precise).
+//
+// This is used to determine if the PNG should be PNG_COLOR_TYPE_GRAY or
+// instead of PNG_COLOR_TYPE_PALETTE.
+//
+// Note:
+//
+// Currently PNG_COLOR_TYPE_GRAY_ALPHA is not used, as it always 16 bits per
+// pixel, but can be represented by PNG_COLOR_TYPE_PALETTE at 8 bits per pixel.
+//
+// This could be a further optimization depending on the size of the image and
+// and number of palette entries.
+//
+// Minimum size of IDAT + directly supporting chunks:
+//                                                               Indexed8 ->
+// Pixels   Colors     GA     PAL       P_IDAT    tRNS    sPLT   Indexed4/2/1
+// ======   ======   ====   =====       ======   =====   =====   ============
+//      1        1      2      29 =         1    12+ 1   12+ 3 -            0   (Indexed8)
+//      2        2      4      32 =         2    12+ 2   12+ 6 -            1   (Indexed4)
+//      8        2     16      33 =         8  + 12+ 2 + 12+ 6 -            7   (Indexed1)
+//     16        2     32      34 =        16  + 12+ 2 + 12+ 6 -           14   (Indexed1)  <-- BREAKPOINT:   2 colors
+//     24        4     48      46 =        24  + 12+ 4 + 12+12 -           18   (Indexed2)  <-- BREAKPOINT:   4 colors
+//     58       16    116     117 =        64  + 12+16 + 12+48 -           32   (Indexed4)  <-- BREAKPOINT:  16 colors
+//    152       32    304     304 =       152  + 12+32 + 12+96 -            0   (Indexed8)  <-- BREAKPOINT:  32 colors
+//    280       64    560     560 =       280  + 12+64 +12+192 -            0   (Indexed8)  <-- BREAKPOINT:  64 colors
+//    536      128   1072    1072 =       536  +12+128 +12+384 -            0   (Indexed8)  <-- BREAKPOINT: 128 colors
+//   1048      256   2096    2096 =      1048  +12+256 +12+768 -            0   (Indexed8)  <-- BREAKPOINT: 256 colors
+//
+//
+static inline bool _IsPaletteGrayscalePNG(const png_color* src,
+                                          const size_t     n)
 {
-    bool gotNEON = false;
+    bool isGrayscale = true;
     
+    for (size_t i = 0; i < n; i++)
+    {
+        if (   src[i].red != src[i].green
+            || src[i].red != src[i].blue)
+        {
+            isGrayscale = false;
+            break;
+        }//if
+    }//for
+    
+    return isGrayscale;
+}//_IsPaletteGrayscalePNG
+
+
+
+// =======================
+// _Indexed8ToPlanar8_PNG:
+// =======================
+//
+// If the resulting palette was entirely grayscale, rewrite the idat indices
+// with the luma value rather than the palette index.
+//
+// In-place only.
+//
+// Note this should only be used if there is no alpha channel present.
+//
+// If there is an alpha channel, it is likely indexed color mode would be
+// superior to PNG_COLOR_TYPE_GRAY_ALPHA which is 16 bits per pixel.
+//
+static inline void _Indexed8ToPlanar8_PNG(const png_color* palette,
+                                          uint8_t*         idat,
+                                          const size_t     width,
+                                          const size_t     height)
+{
+    for (size_t i = 0; i < width * height; i++)
+    {
+        idat[i] = palette[idat[i]].red;
+    }//for
+}//_Indexed8ToPlanar8_PNG
+
+
+// =================================
+// _Planar8ToPlanar4_InPlace_Scalar:
+// =================================
+//
+// If there were <= 16 colors in the palette, use 4 bits per pixel instead of 8.
+//
+// Only works on widths evenly divisible by two.
+// (TODO: per-row with last row byte padding to work on odd widths)
+//
+// In-place only.  Scalar version.
+//
+// Note this may not actually be useful, as byte-level data tends to compress
+// better.
+//
+static FORCE_INLINE void _Planar8ToPlanar4_InPlace_scalar(uint8_t*     src,
+                                                          const size_t width,
+                                                          const size_t height,
+                                                          const size_t rowBytes)
+{
+    size_t x;
+    size_t y;
+    size_t y_rb;
+    size_t destIdx = 0;
+    
+    for (y = 0; y < height; y++)
+    {
+        y_rb = y * rowBytes;
+        
+        for (x = 0; x < width; x += 2)
+        {
+            src[destIdx++] = (src[y_rb+x] << 4) | src[y_rb+x+1];
+        }//for
+    }//for
+}//_Planar8ToPlanar4_InPlace_scalar
+
+
+
+// ===============================
+// _Planar8ToPlanar4_InPlace_NEON:
+// ===============================
+//
+// If there were <= 16 colors in the palette, use 4 bits per pixel instead of 8.
+//
+// Only works on widths evenly divisible by two.
+// (TODO: per-row with last row byte padding to work on odd widths)
+//
+// In-place only.  NEON/SSE version, approx 1.8x faster than scalar w/ SSE.
+//
+// Note this may not actually be useful, as byte-level data tends to compress
+// better.
+//
+static FORCE_INLINE void _Planar8ToPlanar4_InPlace_NEON(uint8_t*     src,
+                                                        const size_t width,
+                                                        const size_t height,
+                                                        const size_t rowBytes)
+{
 #if defined (__ARM_NEON__) || defined(NEON2SSE_H)
-    gotNEON = true;
-#endif
+    size_t       y;
+    size_t       destIdx = 0;
+    uint8x16x2_t src_u8x16x2;
     
-    return gotNEON;
-}//_CanUseNEON
+    for (y = 0; y < height * rowBytes; y += 32)
+    {
+        src_u8x16x2 = vld2q_u8( &(src[y]) );
+        src_u8x16x2.val[0] = vshlq_n_u8(src_u8x16x2.val[0], 4);
+        src_u8x16x2.val[0] = vorrq_u8(src_u8x16x2.val[0], src_u8x16x2.val[1]);
+        vst1q_u8( &(src[destIdx]), src_u8x16x2.val[0]);
+        
+        destIdx += 16;
+    }//for
+#endif
+}//_Planar8ToPlanar4_InPlace_NEON
+
+// ==========================
+// _Planar8ToPlanar4_InPlace:
+// ==========================
+//
+// If there were <= 16 colors in the palette, use 4 bits per pixel instead of 8.
+//
+// Only works on widths evenly divisible by two.
+// (TODO: per-row with last row byte padding to work on odd widths)
+//
+// In-place only.  Main entry point.
+//
+// Note this may not actually be useful, as byte-level data tends to compress
+// better.
+//
+static inline void _Planar8ToPlanar4_InPlace(uint8_t*     src,
+                                             const size_t width,
+                                             const size_t height,
+                                             const size_t rowBytes)
+{
+#if defined (__ARM_NEON__) || defined(NEON2SSE_H)
+    if (height * rowBytes > 31)
+    {
+        _Planar8ToPlanar4_InPlace_NEON(src, width, height, rowBytes);
+    }//if
+    else
+    {
+        _Planar8ToPlanar4_InPlace_scalar(src, width, height, rowBytes);
+    }//else
+#else
+    _Planar8ToPlanar4_InPlace_scalar(src, width, height, rowBytes);
+#endif
+}//_Planar8ToPlanar4_InPlace
 
 
 
-// scalar-vector compare equality and find index
-static inline size_t _svceqqi_u32_scalar(const uint32_t* src,
-                                         const uint32_t  x,
-                                         const size_t    n)
+
+// =================================
+// _Planar8ToPlanar2_InPlace_Scalar:
+// =================================
+//
+// If there were <= 4 colors in the palette, use 2 bits per pixel instead of 8.
+//
+// Only works on widths evenly divisible by two.
+// (TODO: per-row with last row byte padding to work on odd widths)
+//
+// In-place only.  Scalar version.
+//
+// Note this may not actually be useful, as byte-level data tends to compress
+// better.
+//
+static FORCE_INLINE void _Planar8ToPlanar2_InPlace_scalar(uint8_t*     src,
+                                                          const size_t width,
+                                                          const size_t height,
+                                                          const size_t rowBytes)
+{
+    size_t x;
+    size_t y;
+    size_t y_rb;
+    size_t destIdx = 0;
+    
+    for (y = 0; y < height; y++)
+    {
+        y_rb = y * rowBytes;
+        
+        for (x = 0; x < width; x += 4)
+        {
+            src[destIdx++] = (src[y_rb+x] << 6) | (src[y_rb+x+1] << 4) | (src[y_rb+x+2] << 2) | src[y_rb+x+3];
+        }//for
+    }//for
+}//_Planar8ToPlanar2_InPlace_scalar
+
+
+// ===============================
+// _Planar8ToPlanar2_InPlace_NEON:
+// ===============================
+//
+// If there were <= 4 colors in the palette, use 2 bits per pixel instead of 8.
+//
+// Only works on widths evenly divisible by two.
+// (TODO: per-row with last row byte padding to work on odd widths)
+//
+// In-place only.  NEON/SSE version, approx 1.8x faster than scalar w/ SSE.
+//
+// Note this may not actually be useful, as byte-level data tends to compress
+// better.
+//
+static FORCE_INLINE void _Planar8ToPlanar2_InPlace_NEON(uint8_t*     src,
+                                                        const size_t width,
+                                                        const size_t height,
+                                                        const size_t rowBytes)
+{
+#if defined (__ARM_NEON__) || defined(NEON2SSE_H)
+    size_t       y;
+    size_t       destIdx = 0;
+    uint8x16x4_t src_u8x16x4;
+    
+    for (y = 0; y < height * rowBytes; y += 64)
+    {
+        src_u8x16x4 = vld4q_u8( &(src[y]) );
+        src_u8x16x4.val[0] = vshlq_n_u8(src_u8x16x4.val[0], 6);
+        src_u8x16x4.val[1] = vshlq_n_u8(src_u8x16x4.val[1], 4);
+        src_u8x16x4.val[2] = vshlq_n_u8(src_u8x16x4.val[2], 2);
+        
+        src_u8x16x4.val[0] = vorrq_u8(src_u8x16x4.val[0], src_u8x16x4.val[1]);
+        src_u8x16x4.val[0] = vorrq_u8(src_u8x16x4.val[0], src_u8x16x4.val[2]);
+        src_u8x16x4.val[0] = vorrq_u8(src_u8x16x4.val[0], src_u8x16x4.val[3]);
+        
+        vst1q_u8( &(src[destIdx]), src_u8x16x4.val[0]);
+        
+        destIdx += 16;
+    }//for
+#endif
+}//_Planar8ToPlanar2_InPlace_NEON
+
+
+// ===============================
+// _Planar8ToPlanar2_InPlace_NEON:
+// ===============================
+//
+// If there were <= 4 colors in the palette, use 2 bits per pixel instead of 8.
+//
+// Only works on widths evenly divisible by two.
+// (TODO: per-row with last row byte padding to work on odd widths)
+//
+// In-place only.  Main entry point.
+//
+// Note this may not actually be useful, as byte-level data tends to compress
+// better.
+//
+static inline void _Planar8ToPlanar2_InPlace(uint8_t*     src,
+                                             const size_t width,
+                                             const size_t height,
+                                             const size_t rowBytes)
+{
+#if defined (__ARM_NEON__) || defined(NEON2SSE_H)
+    if (height * rowBytes > 63)
+    {
+        _Planar8ToPlanar2_InPlace_NEON(src, width, height, rowBytes);
+    }//if
+    else
+    {
+        _Planar8ToPlanar2_InPlace_scalar(src, width, height, rowBytes);
+    }//else
+#else
+    _Planar8ToPlanar2_InPlace_scalar(src, width, height, rowBytes);
+#endif
+}//_Planar8ToPlanar2_InPlace
+
+
+
+
+// ===============================
+// _Planar8ToPlanar2_InPlace_NEON:
+// ===============================
+//
+// If there were <= 2 colors in the palette, use 1 bit per pixel instead of 8.
+//
+// Only works on widths evenly divisible by two.
+// (TODO: per-row with last row byte padding to work on odd widths)
+//
+// In-place only.  Scalar version and main entry point.
+//
+// Note this may not actually be useful, as byte-level data tends to compress
+// better.
+//
+static inline void _Planar8ToPlanar1_InPlace(uint8_t*     src,
+                                             const size_t width,
+                                             const size_t height,
+                                             const size_t rowBytes)
+{
+    size_t x;
+    size_t y;
+    size_t y_rb;
+    size_t destIdx = 0;
+    
+    for (y = 0; y < height; y++)
+    {
+        y_rb = y * rowBytes;
+        
+        for (x = 0; x < width; x += 8)
+        {
+            src[destIdx++] = (src[y_rb+x]   << 7) | (src[y_rb+x+1] << 6) | (src[y_rb+x+2] << 5) | (src[y_rb+x+3] << 4)
+                           | (src[y_rb+x+4] << 3) | (src[y_rb+x+5] << 2) | (src[y_rb+x+6] << 1) |  src[y_rb+x+7];
+        }//for
+    }//for
+}//_Planar8ToPlanar1_InPlace
+
+
+// ===================================
+// _Indexed8ToIndexed124_IfNeeded_PNG:
+// ===================================
+//
+// For a PNG with smaller palette of 16, 4, or 2 colors (or less), reduce the
+// number of bits per pixel in the indices (idat) chunk.
+//
+static FORCE_INLINE void _Indexed8ToIndexed124_IfNeeded_PNG(uint8_t*     src,
+                                                            const size_t width,
+                                                            const size_t height,
+                                                            int*         bitsPerComp,
+                                                            const size_t color_n)
+{
+    if (width % 2 == 0) // todo: make bit->byte work on odd widths
+    {
+        if (color_n <= 2 && width > 8)
+        {
+            _Planar8ToPlanar1_InPlace(src, width, height, width);    // Indexed8 -> Indexed1
+            *bitsPerComp = 1;
+        }//if
+        else if (color_n <= 4 && width > 4)
+        {
+            _Planar8ToPlanar2_InPlace(src, width, height, width);    // Indexed8 -> Indexed2
+            *bitsPerComp = 2;
+        }//if
+        else if (color_n <= 16 && width > 1)
+        {
+            _Planar8ToPlanar4_InPlace(src, width, height, width);    // Indexed8 -> Indexed4
+            *bitsPerComp = 4;
+        }//if
+    }//if
+}//_Indexed8ToIndexed124_IfNeeded_PNG
+
+// ===============================
+// _IndexedToPlanar8_IfNeeded_PNG:
+// ===============================
+//
+// For a PNG with a palette of entirely grayscale entries, and with a palette
+// of > 16 entries, drop indexed color mode entirely.
+//
+// Note at the moment, indexed color mode is kept for grayscale palettes with
+// < 16 entries.  This is arguable, and comes down to loss of precision vs.
+// potential size reduction.  For example, a palette of luma=128 and luma=0
+// would always be expanded to luma=255 and luma=0 @ 1 bpp.  Thus, a further
+// optimization would threshold Indexed8 -> Planar1/2/4 depending upon the
+// specifics of the palette.
+//
+static FORCE_INLINE void _IndexedToPlanar8_IfNeeded_PNG(uint8_t*         idxs,
+                                                        const size_t     width,
+                                                        const size_t     height,
+                                                        const int        bitsPerComp,
+                                                        const png_color* palette,
+                                                        const size_t     color_n,
+                                                        const bool       isOpaque,
+                                                        int*             png_color_type)
+{
+    if (!isOpaque && bitsPerComp == 8 && _IsPaletteGrayscalePNG(palette, color_n))
+    {
+        *png_color_type = PNG_COLOR_TYPE_GRAY;                  // Indexed8 -> Planar8
+        
+        _Indexed8ToPlanar8_PNG(palette, idxs, width, height);
+    }//if
+}//_Indexed8ToPlanar8_IfNeeded_PNG
+
+
+
+
+
+
+
+// ====================
+// _svceqqi_u32_scalar:
+// ====================
+//
+// Scalar-vector compare equality and find index, scalar version.
+//
+// (don't ask what happened to the SIMD version)
+//
+static FORCE_INLINE size_t _svceqqi_u32_scalar(const uint32_t* src,
+                                               const uint32_t  x,
+                                               const size_t    n)
 {
     size_t idx = UINT32_MAX;
     
@@ -49,10 +474,14 @@ static inline size_t _svceqqi_u32_scalar(const uint32_t* src,
 }//_svceqqi_u32_scalar
 
 
-
-
-// vector-scalar uint16_t -> uint8_t narrowing move with conditional subtract (NEON version)
-static inline void _vSIMD_vscgtsubcvtu8_NEON(const uint16_t* src,
+// ====================
+// _vscgtsubcvtu8_NEON:
+// ====================
+//
+// Vector-scalar uint16_t -> uint8_t narrowing move with conditional subtract
+// (NEON version).
+//
+static FORCE_INLINE void _vscgtsubcvtu8_NEON(const uint16_t* src,
                                              const uint16_t  thres,
                                              const uint16_t  x,
                                              uint8_t*        dest,
@@ -79,10 +508,16 @@ static inline void _vSIMD_vscgtsubcvtu8_NEON(const uint16_t* src,
     }//for
     
 #endif
-}//_vSIMD_vscgtsubcvtu8_NEON
+}//_vscgtsubcvtu8_NEON
 
-// vector-scalar uint16_t -> uint8_t narrowing move with conditional subtract (scalar version)
-static inline void _vSIMD_vscgtsubcvtu8_scalar(const uint16_t* src,
+// ======================
+// _vscgtsubcvtu8_scalar:
+// ======================
+//
+// Vector-scalar uint16_t -> uint8_t narrowing move with conditional subtract
+// (scalar version).
+//
+static FORCE_INLINE void _vscgtsubcvtu8_scalar(const uint16_t* src,
                                                const uint16_t  thres,
                                                const uint16_t  x,
                                                uint8_t*        dest,
@@ -93,41 +528,136 @@ static inline void _vSIMD_vscgtsubcvtu8_scalar(const uint16_t* src,
         dest[i] = src[i] > thres ? src[i] - x
                                  : src[i];
     }//for
-}//_vSIMD_vscgtsubcvtu8_scalar
+}//_vscgtsubcvtu8_scalar
 
-// vector-scalar uint16_t -> uint8_t narrowing move with conditional subtract (main entry point)
-static inline void _vSIMD_vscgtsubcvtu8(const uint16_t* src,
-                                        const uint16_t  thres,
-                                        const uint16_t  x,
-                                        uint8_t*        dest,
-                                        const size_t    n)
+
+// ===============
+// _vscgtsubcvtu8:
+// ===============
+//
+// Vector-scalar uint16_t -> uint8_t narrowing move with conditional subtract
+// (main entry point).
+//
+static inline void _vscgtsubcvtu8(const uint16_t* src,
+                                  const uint16_t  thres,
+                                  const uint16_t  x,
+                                  uint8_t*        dest,
+                                  const size_t    n)
 {
-    if (n >= 8 && _CanUseNEON())
+#if defined (__ARM_NEON__) || defined(NEON2SSE_H)
+    if (n > 7)
     {
         size_t lastCleanWidth = n - n % 8;
         
-        _vSIMD_vscgtsubcvtu8_NEON(src, thres, x, dest, lastCleanWidth);
+        _vscgtsubcvtu8_NEON(src, thres, x, dest, lastCleanWidth);
         
         if (n % 8 != 0)
         {
-            _vSIMD_vscgtsubcvtu8_scalar(src  + lastCleanWidth,
-                                        thres,
-                                        x,
-                                        dest + lastCleanWidth,
-                                        n - lastCleanWidth);
+            _vscgtsubcvtu8_scalar(src  + lastCleanWidth,
+                                  thres,
+                                  x,
+                                  dest + lastCleanWidth,
+                                  n    - lastCleanWidth);
         }//if
     }//if
     else
     {
-        _vSIMD_vscgtsubcvtu8_scalar(src, thres, x, dest, n);
+        _vscgtsubcvtu8_scalar(src, thres, x, dest, n);
     }//else
-}//_vSIMD_vscgtsubcvtu8
+#else
+    _vscgtsubcvtu8_scalar(src, thres, x, dest, n);
+#endif
+}//_vscgtsubcvtu8
 
 
-// meh.
-static inline void _RGBA8888_to_RGB888_InPlace_scalar(uint8_t*     src,
-                                                      const size_t width,
-                                                      const size_t height)
+
+
+static FORCE_INLINE void _RGBA8888_to_RGB888_scalar(const uint8_t*  src,
+                                                    uint8_t*        dest,
+                                                    const size_t    width,
+                                                    const size_t    height)
+{
+    const size_t n       = width * height * 4;
+    size_t       destIdx = 3;
+    
+    if (n > 0)
+    {
+        dest[0] = src[0];
+        dest[1] = src[1];
+        dest[2] = src[2];
+    }//if
+    
+    for (size_t i = 4; i < n; i += 4)
+    {
+        dest[destIdx  ] = src[i  ];
+        dest[destIdx+1] = src[i+1];
+        dest[destIdx+2] = src[i+2];
+        
+        destIdx += 3;
+    }//for
+}//_RGBA8888_to_RGB888_scalar
+
+static FORCE_INLINE void _RGBA8888_to_RGB888_vImage(const uint8_t* src,
+                                                    uint8_t*       dest,
+                                                    const size_t   width,
+                                                    const size_t   height)
+{
+#ifdef __ACCELERATE__
+    vImage_Buffer viDataSrc  = { (void*)src,  height, width, width * 4 };
+    vImage_Buffer viDataDest = { (void*)dest, height, width, width * 3 };
+    
+    vImageConvert_RGBA8888toRGB888(&viDataSrc, &viDataDest, kvImageDoNotTile);
+#endif
+}//_RGBA8888_to_RGB888_vImage
+
+
+// ====================
+// _RGBA8888_to_RGB888:
+// ====================
+//
+// Converts interleaved RGBA8888 buffer src to RGB888 dest, discarding
+// the alpha channel.
+//
+// The new bytes are compacted and all slack space will be at the end of buffer
+// dest.
+//
+// This will work in-place.
+//
+static inline void _RGBA8888_to_RGB888(const uint8_t* src,
+                                       uint8_t*       dest,
+                                       const size_t   width,
+                                       const size_t   height)
+{
+#ifdef __ACCELERATE__
+    if (width * height > 16)
+    {
+        _RGBA8888_to_RGB888_vImage(src, dest, width, height);
+    }//if
+    else
+    {
+        _RGBA8888_to_RGB888_scalar(src, dest, width, height);
+    }//else
+#else
+    _RGBA8888_to_RGB888_InPlace_scalar(src, width, height);
+#endif
+}//_RGBA8888_to_RGB888
+
+
+
+/*
+// ===================================
+// _RGBA8888_to_RGB888_InPlace_scalar:
+// ===================================
+//
+// Converts interleaved RGBA8888 buffer src to RGB888 in-place, discarding
+// the alpha channel.
+//
+// The new bytes are compacted and all slack space will be at the end of buffer
+// src.
+//
+static FORCE_INLINE void _RGBA8888_to_RGB888_InPlace_scalar(uint8_t*     src,
+                                                            const size_t width,
+                                                            const size_t height)
 {
     if (width * height < 4)
     {
@@ -146,38 +676,40 @@ static inline void _RGBA8888_to_RGB888_InPlace_scalar(uint8_t*     src,
     }//for
 }//_RGBA8888_to_RGB888_InPlace_scalar
 
-
-// LSB
-// the following can be vectorized, should gain ~2x with AVX intrins, but requires 128-bit aligned src and dest.
-// vectorization would also assume the png_color struct would always be packed and 3 bytes.
-static inline void _RGB888_u32_to_png_color_a08(const uint32_t* src,
-                                                png_color*      dest_rgb,
-                                                const size_t    n)
+static inline void _RGBA8888_to_RGB888_InPlace(uint8_t*     src,
+                                               const size_t width,
+                                               const size_t height)
 {
-    if (sizeof(png_color) == 3 && _AccelerateFuckYeah() && n > 0)
+#ifdef __ACCELERATE__
+    if (width * height > 16)
     {
-        size_t width;
-        size_t height;
+        vImage_Buffer viDataSrc  = { src, height, width, width * 4 };
+        vImage_Buffer viDataDest = { src, height, width, width * 3 };
         
-        if (n % 64 == 0) // help out vImage's cache blocking if possible
-        {
-            width  = 64;
-            height = n / width;
-        }//if
-        else
-        {
-            width  = n;
-            height = 1;
-        }//else
-        
-#ifdef VIMAGE_CONVERSION_H
-        vImage_Buffer viDataSrc  = { (void*)src,      height, width, width * 4 };
-        vImage_Buffer viDataDest = { (void*)dest_rgb, height, width, width * 3 };
-        
-        vImageConvert_RGBA8888toRGB888(&viDataSrc, &viDataDest, kvImageNoFlags);
-#endif
+        vImageConvert_RGBA8888toRGB888(&viDataSrc, &viDataDest, kvImageDoNotTile);
     }//if
-    else if (n > 0)
+    else
+    {
+        _RGBA8888_to_RGB888_InPlace_scalar(src, width, height);
+    }//else
+#else
+    _RGBA8888_to_RGB888_InPlace_scalar(src, width, height);
+#endif
+}//_RGBA8888_to_RGB888_InPlace
+*/
+
+// ======================================
+// _RGBA8888_opaque_u32_to_png_color_a08:
+// ======================================
+//
+// Converts RGBA8888 src into an array of pointers to png_color structs dest_rgb,
+// where it is known that src only contains opaque pixels.
+//
+static FORCE_INLINE void _RGBA8888_opaque_u32_to_png_color_a08(const uint32_t* src,
+                                                               png_color*      dest_rgb,
+                                                               const size_t    n)
+{
+    if (sizeof(png_color) != 3) // in case assumption goes bad.
     {
         for (size_t i = 0; i < n; i++)
         {
@@ -185,13 +717,25 @@ static inline void _RGB888_u32_to_png_color_a08(const uint32_t* src,
             dest_rgb[i].green = ((src[i]) & 0x0000FF00) >> 8;
             dest_rgb[i].blue  = ((src[i]) & 0x00FF0000) >> 16;
         }//for
+    }//if
+    else
+    {
+        _RGBA8888_to_RGB888((uint8_t*)src, (uint8_t*)dest_rgb, n, 1);
     }//else
-}//_RGBA8888_u32_to_png_color_a08
+}//_RGBA8888_opaque_u32_to_png_color_a08
 
 
-// LSB
-// the following can be vectorized, the simpler ->RGB case should gain ~2x with AVX intrins, but requires 128-bit aligned src and dest.
-// vectorization would also assume the png_color struct would always be packed and 3 bytes.
+// ===============================
+// _RGBA8888_u32_to_png_color_a08:
+// ===============================
+//
+// Converts RGBA8888 src into an array of pointers to png_color structs dest_rgb,
+// inferring from whether or not a NULL pointer was passed for parameter dest_a
+// if the alpha channel should be extracted or not.
+//
+// This is used to convert a RGBA8888 palette stack into structures suitable
+// for saving a PNG with PNG_COLOR_TYPE_PALETTE.  dest_a becomes the tRNS chunk.
+//
 static inline void _RGBA8888_u32_to_png_color_a08(const uint32_t* src,
                                                   png_color*      dest_rgb,
                                                   uint8_t*        dest_a,
@@ -209,13 +753,22 @@ static inline void _RGBA8888_u32_to_png_color_a08(const uint32_t* src,
     }//if
     else
     {
-        _RGB888_u32_to_png_color_a08(src, dest_rgb, n);
+        _RGBA8888_opaque_u32_to_png_color_a08(src, dest_rgb, n);
     }//else
 }//_RGBA8888_u32_to_png_color_a08
 
 
-// pushes RGBA value onto palette stack, updates corresponding value idat_idx, and increments pal_idx.
-// if RGBA value was already on stack, just updates idat_idx.
+// =================================
+// _PalettePush_UpdateIdxs_RGBA8888:
+// =================================
+//
+// Helper for _MakePaletteFromRGBA8888.
+//
+// Pushes RGBA value onto palette stack, updates corresponding value idat_idx,
+// and increments pal_idx.
+//
+// If RGBA value was already on stack, just updates idat_idx.
+//
 static inline void _PalettePush_UpdateIdxs_RGBA8888(const uint32_t rgba,
                                                     uint32_t*      palette,
                                                     uint16_t*      idat_idx,
@@ -232,12 +785,22 @@ static inline void _PalettePush_UpdateIdxs_RGBA8888(const uint32_t rgba,
     {
         *idat_idx         = *pal_idx  + idat_idx_offset;
         palette[*pal_idx] = rgba;
-        
+
         *pal_idx          = *pal_idx  + 1;
     }//else
 }//_PalettePush_UpdateIdxs_RGBA8888
 
-
+// ==================
+// _IsOpaqueRGBA8888:
+// ==================
+//
+// Returns whether or not the interleaved RGBA8888 image src has an entirely
+// opaque (0xFF) alpha channel.
+//
+// Used to determine if the image can be safely converted to RGB888 if the
+// primary conversion to indexed color fails because there are too many colors
+// found.
+//
 static inline bool _IsOpaqueRGBA8888(const uint8_t* src,
                                      const size_t   n)
 {
@@ -257,8 +820,20 @@ static inline bool _IsOpaqueRGBA8888(const uint8_t* src,
 }//_IsOpaqueRGBA8888
 
 
-// converts RGBA8888 src to palette rgbOut, alpha channel aOut (non-opaque first sorting), and image data indices idxOut if <= 256 distinct colors.
-// note this is a lossless palletization ONLY.  no median cuts, no dithering.
+
+
+
+
+// =========================
+// _MakePaletteFromRGBA8888:
+// =========================
+//
+// Converts RGBA8888 src to palette rgbOut, alpha channel aOut (non-opaque first
+// sorting), and transforms the source pixels into image data indices idxOut if
+// <= 256 distinct colors.
+//
+// Note this is a lossless palletization ONLY.  No median cuts, dithering, etc.
+//
 static inline size_t _MakePaletteFromRGBA8888(uint8_t*     src,
                                               const size_t width,
                                               const size_t height,
@@ -306,10 +881,10 @@ static inline size_t _MakePaletteFromRGBA8888(uint8_t*     src,
         _pal     = malloc(sizeof(png_color) * (palIdx_NoO + palIdx_IsO));
         
         // fix up any opaque indices >= 512 for however many non-opaque entries there actually were
-        _vSIMD_vscgtsubcvtu8(idxs_u16,
-                             511, 512 - palIdx_NoO,
-                             idxs_u08,
-                             n);
+        _vscgtsubcvtu8(idxs_u16,
+                       511, 512 - palIdx_NoO,
+                       idxs_u08,
+                       n);
         
         // RGBA8888 -> RGB888, A8
         if (palIdx_NoO > 0)
@@ -353,7 +928,6 @@ static inline size_t _MakePaletteFromRGBA8888(uint8_t*     src,
 
 
 
-
 int gbImage_PNG_Write_RGBA8888(const char*  filename,
                                const size_t width,
                                const size_t height,
@@ -369,14 +943,14 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
     
     if (src == NULL)
     {
-		fprintf(stderr, "Can't write NULL src buffer for %s.\n", filename);
+		fprintf(stderr, "gbImage_PNG_Write_RGBA8888: Can't write NULL src buffer for %s.\n", filename);
 		code        = 1;
 		shouldWrite = false;
     }//if
     
 	if (fp == NULL)
     {
-		fprintf(stderr, "Could not open file %s for writing\n", filename);
+		fprintf(stderr, "gbImage_PNG_Write_RGBA8888: Could not open file %s for writing\n", filename);
 		code        = 1;
 		shouldWrite = false;
 	}//if
@@ -387,7 +961,7 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         
         if (png_ptr == NULL)
         {
-            fprintf(stderr, "Could not allocate write struct\n");
+            fprintf(stderr, "gbImage_PNG_Write_RGBA8888: Could not allocate write struct\n");
             code        = 1;
             shouldWrite = false;
         }//if
@@ -399,7 +973,7 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         
         if (info_ptr == NULL)
         {
-            fprintf(stderr, "Could not allocate info struct\n");
+            fprintf(stderr, "gbImage_PNG_Write_RGBA8888: Could not allocate info struct\n");
             code        = 1;
             shouldWrite = false;
         }//if
@@ -411,7 +985,7 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         
         if (result)
         {
-            fprintf(stderr, "Error during png creation\n");
+            fprintf(stderr, "gbImage_PNG_Write_RGBA8888: Error during png creation\n");
             code        = 1;
             shouldWrite = false;
         }//if
@@ -422,12 +996,13 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         // <zlib>
         png_set_compression_level(png_ptr, 9);          // RLE=1
         png_set_compression_strategy(png_ptr, 0);       // RLE=3
-        png_set_filter(png_ptr, 0, PNG_NO_FILTERS);    // filters are only useful for webpage gradients
+        png_set_filter(png_ptr, 0, PNG_NO_FILTERS);     // filters are only useful for webpage gradients
         // </zlib>
         
         png_init_io(png_ptr, fp);
         
-        int    _png_color_type = PNG_COLOR_TYPE_RGBA;
+        int _png_color_type = PNG_COLOR_TYPE_RGBA;
+        int bitsPerComp     = 8;
         size_t y;
         
         // 4 color types are supported and set by the next block:
@@ -454,11 +1029,18 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         {
             _png_color_type = PNG_COLOR_TYPE_PALETTE;
             
-            png_set_PLTE(png_ptr, info_ptr, _p, (int)color_n);
+            _Indexed8ToIndexed124_IfNeeded_PNG(_i, width, height, &bitsPerComp, color_n);
             
-            if (!isOpaque)
+            _IndexedToPlanar8_IfNeeded_PNG(_i, width, height, bitsPerComp, _p, color_n, isOpaque, &_png_color_type);    // Indexed8 -> Planar8 (PNG_COLOR_TYPE_GRAY)
+            
+            if (_png_color_type == PNG_COLOR_TYPE_PALETTE)
             {
-                png_set_tRNS(png_ptr, info_ptr, &(_a[0]), (int)_nopIdx, NULL);
+                png_set_PLTE(png_ptr, info_ptr, _p, (int)color_n);
+                
+                if (!isOpaque)
+                {
+                    png_set_tRNS(png_ptr, info_ptr, &(_a[0]), (int)_nopIdx, NULL);
+                }//if
             }//if
             
             free(_p);
@@ -472,21 +1054,12 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         }//if
         else if (isOpaque)
         {
-            // there can be a false positive at this point, but not a false negative.
-            
-            isOpaque = _IsOpaqueRGBA8888(src + 4 * _last_i,
-                                         width * height - _last_i);
-            
-            if (isOpaque)
-            {
-                _png_color_type = PNG_COLOR_TYPE_RGB;
-            }//if
+            _png_color_type = _IsOpaqueRGBA8888(src + 4 * _last_i, width * height - _last_i) ? PNG_COLOR_TYPE_RGB : _png_color_type;
         }//else if
         // </indexedColorQuant>
         
-        const int    bitsPerComp = 8;
-        const int    writeBPP    = _png_color_type == PNG_COLOR_TYPE_RGBA ? 32 : _png_color_type == PNG_COLOR_TYPE_RGB ? 24 : 8;
-        const size_t rowBytes    = (width * writeBPP) >> 3;
+        const int    write_bpp   = _png_color_type == PNG_COLOR_TYPE_RGBA ? 32 : _png_color_type == PNG_COLOR_TYPE_RGB ? 24 : bitsPerComp;
+        const size_t rowBytes    = (width * write_bpp) >> 3;
         
         // <PNG_IHDR>
         png_set_IHDR(png_ptr,
@@ -506,7 +1079,8 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         
         
         // <write>
-        if (_png_color_type == PNG_COLOR_TYPE_PALETTE)
+        if (   _png_color_type == PNG_COLOR_TYPE_PALETTE
+            || _png_color_type == PNG_COLOR_TYPE_GRAY)
         {
             for (y=0; y<height; y++)
             {
@@ -525,14 +1099,7 @@ int gbImage_PNG_Write_RGBA8888(const char*  filename,
         }//else if
         else if (_png_color_type == PNG_COLOR_TYPE_RGB)
         {
-#ifdef VIMAGE_CONVERSION_H
-            vImage_Buffer viDataSrc  = { src, height, width, width *  4              };
-            vImage_Buffer viDataDest = { src, height, width, width * (writeBPP >> 3) };
-            
-            vImageConvert_RGBA8888toRGB888(&viDataSrc, &viDataDest, kvImageDoNotTile);
-#else
-            _RGBA8888_to_RGB888_InPlace_scalar(src, width, height);
-#endif
+            _RGBA8888_to_RGB888(src, src, width, height);
             
             for (y=0; y<height; y++)
             {
@@ -582,7 +1149,7 @@ void gbImage_PNG_Read_RGBA8888(const char* filename,
     
     if (!fp)
     {
-        printf("read png: can't open file [%s]\n", filename);
+        printf("gbImage_PNG_Read_RGBA8888: can't open file [%s]\n", filename);
         shouldRead = false;
     }//if
     
@@ -594,7 +1161,7 @@ void gbImage_PNG_Read_RGBA8888(const char* filename,
         
         if (result)
         {
-            printf("read png: not PNG: %s.  hdr:[%02x %02x %02x %02x %02x %02x %02x %02x]\n",
+            printf("gbImage_PNG_Read_RGBA8888: not PNG: %s.  hdr:[%02x %02x %02x %02x %02x %02x %02x %02x]\n",
                    filename,
                    header[0], header[1], header[2], header[3],
                    header[4], header[5], header[6], header[7]);
@@ -609,7 +1176,7 @@ void gbImage_PNG_Read_RGBA8888(const char* filename,
         
         if (!png_ptr)
         {
-            printf("read png: can't make read struct\n");
+            printf("gbImage_PNG_Read_RGBA8888: can't make read struct\n");
             shouldRead = false;
         }//if
     }//if
@@ -621,7 +1188,7 @@ void gbImage_PNG_Read_RGBA8888(const char* filename,
         
         if (!info_ptr)
         {
-            printf("read png: can't make info struct\n");
+            printf("gbImage_PNG_Read_RGBA8888: can't make info struct\n");
             shouldRead = false;
         }//if
     }//if
@@ -632,7 +1199,7 @@ void gbImage_PNG_Read_RGBA8888(const char* filename,
         
         if (result)
         {
-            printf("read png: err during init_io\n");
+            printf("gbImage_PNG_Read_RGBA8888: err during init_io\n");
             shouldRead = false;
         }//if
     }//if
@@ -659,9 +1226,9 @@ void gbImage_PNG_Read_RGBA8888(const char* filename,
             png_set_palette_to_rgb(png_ptr);
         }//if
         
-        if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)     // Planar1/2/4 -> Planar8
-        {
-            png_set_expand_gray_1_2_4_to_8(png_ptr);
+        if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)     // Planar1 -> Planar8
+        {                                                           // Planar2 -> Planar8
+            png_set_expand_gray_1_2_4_to_8(png_ptr);                // Planar4 -> Planar8
         }//if
         
         if (png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS))        // Indexed8+A -> RGBA8888
@@ -695,7 +1262,7 @@ void gbImage_PNG_Read_RGBA8888(const char* filename,
         // read file
         if (setjmp(png_jmpbuf(png_ptr)))
         {
-            printf("read png: err during read image\n");
+            printf("gbImage_PNG_Read_RGBA8888: err during read image\n");
             shouldRead = false;
         }//if
 

@@ -1,5 +1,13 @@
 #include "gbImage_png.h"
 
+// ==============
+// gbImage_png.c:
+// ==============
+//
+// Reads/writes RGBA8888 buffers to PNG files on disk.
+//
+// Writes are optimized, and were improved by <1% when running
+// pngcrush -rem alla -reduce -brute on the output for ~300k tiles.
 
 #ifndef FORCE_INLINE
 #  ifdef _MSC_VER
@@ -642,61 +650,6 @@ static inline void _RGBA8888_to_RGB888(const uint8_t* src,
 #endif
 }//_RGBA8888_to_RGB888
 
-
-
-/*
-// ===================================
-// _RGBA8888_to_RGB888_InPlace_scalar:
-// ===================================
-//
-// Converts interleaved RGBA8888 buffer src to RGB888 in-place, discarding
-// the alpha channel.
-//
-// The new bytes are compacted and all slack space will be at the end of buffer
-// src.
-//
-static FORCE_INLINE void _RGBA8888_to_RGB888_InPlace_scalar(uint8_t*     src,
-                                                            const size_t width,
-                                                            const size_t height)
-{
-    if (width * height < 4)
-    {
-        return;
-    }//if
-    
-    size_t rgbIdx = 3;
-    
-    for (size_t i = 4; i < width * height * 4; i += 4)
-    {
-        src[rgbIdx  ] = src[i  ];
-        src[rgbIdx+1] = src[i+1];
-        src[rgbIdx+2] = src[i+2];
-        
-        rgbIdx += 3;
-    }//for
-}//_RGBA8888_to_RGB888_InPlace_scalar
-
-static inline void _RGBA8888_to_RGB888_InPlace(uint8_t*     src,
-                                               const size_t width,
-                                               const size_t height)
-{
-#ifdef __ACCELERATE__
-    if (width * height > 16)
-    {
-        vImage_Buffer viDataSrc  = { src, height, width, width * 4 };
-        vImage_Buffer viDataDest = { src, height, width, width * 3 };
-        
-        vImageConvert_RGBA8888toRGB888(&viDataSrc, &viDataDest, kvImageDoNotTile);
-    }//if
-    else
-    {
-        _RGBA8888_to_RGB888_InPlace_scalar(src, width, height);
-    }//else
-#else
-    _RGBA8888_to_RGB888_InPlace_scalar(src, width, height);
-#endif
-}//_RGBA8888_to_RGB888_InPlace
-*/
 
 // ======================================
 // _RGBA8888_opaque_u32_to_png_color_a08:
